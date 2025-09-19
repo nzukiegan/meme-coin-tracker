@@ -23,6 +23,7 @@ function App() {
   const [sortDirection, setSortDirection] = useState('asc');
   const [heliusAPIKey, setHeliusAPIKey] = useState('');
   const [lastUpdated, setLastUpdated] = useState('-');
+  const [isAPIKeyLoaded, setIsAPIKeyLoaded] = useState(false);
   const [stats, setStats] = useState({
     trackedCoins: 0,
     greenSignals: 0,
@@ -36,9 +37,10 @@ function App() {
   const refreshIntervalId = useRef(null);
 
   useEffect(() => {
-    const savedKey = process.env.REACT_APP_HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY
+    const savedKey = process.env.REACT_APP_HELIUS_API_KEY
     if (savedKey) {
       setHeliusAPIKey(savedKey);
+      setIsAPIKeyLoaded(true);
     }
     
     return () => {
@@ -52,18 +54,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    initPumpPortalWS();
-    startPeriodicUpdate();
-
-    return () => {
-      if (refreshIntervalId.current) {
-        clearInterval(refreshIntervalId.current);
-      }
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.close();
-      }
-    };
-  }, []);
+    if (isAPIKeyLoaded) {
+      initPumpPortalWS();
+      startPeriodicUpdate();
+    }
+  }, [isAPIKeyLoaded])
 
 
   const initPumpPortalWS = () => {
@@ -156,111 +151,83 @@ function App() {
 
   const updateCoinsData = async () => {
   try {
-    setTrackedCoins(prevTracked => {
-      const updated = { ...prevTracked };
+    // 1. Clone current tracked coins
+    let updatedTrackedCoins = { ...trackedCoins };
 
-      const newCoins = Object.values(preMigrationTokens.current)
-        .filter(t => t.is_pre_migration);
+    // 2. Ensure pre-migration tokens are included
+    const newCoins = Object.values(preMigrationTokens.current)
+      .filter(t => t.is_pre_migration);
 
-      newCoins.forEach(coin => {
-        if (!updated[coin.mint]) {
-          updated[coin.mint] = {
-            ...coin,
-            volume15s: 0, volume30s: 0, volume1m: 0, volume5m: 0,
-            transactions15s: 0, transactions30s: 0, transactions1m: 0, transactions5m: 0,
-            buys15s: 0, buys30s: 0, buys1m: 0, buys5m: 0,
-            sells15s: 0, sells30s: 0, sells1m: 0, sells5m: 0,
-            lastUpdated: new Date()
-          };
-        }
-      });
-
-      return updated;
+    newCoins.forEach(coin => {
+      if (!updatedTrackedCoins[coin.mint]) {
+        updatedTrackedCoins[coin.mint] = {
+          ...coin,
+          volume15s: 0, volume30s: 0, volume1m: 0, volume5m: 0,
+          transactions15s: 0, transactions30s: 0, transactions1m: 0, transactions5m: 0,
+          buys15s: 0, buys30s: 0, buys1m: 0, buys5m: 0,
+          sells15s: 0, sells30s: 0, sells1m: 0, sells5m: 0,
+          lastUpdated: new Date()
+        };
+      }
     });
 
-    // 2. Work with the latest state inside setTrackedCoins callback
-    setTrackedCoins(async prevTracked => {
-      const updatedCoins = await fetchTradingData(Object.values(prevTracked));
+    console.log("updated tracked coins", updatedTrackedCoins)
 
-      const merged = { ...prevTracked };
-      updatedCoins.forEach(coin => {
-        merged[coin.mint] = { ...merged[coin.mint], ...coin };
-      });
+    // 3. Fetch trading data for ALL tracked coins
+    const fetchedCoins = await fetchTradingData(Object.values(updatedTrackedCoins));
 
-      // Update coinsData and stats here
-      const processedData = processData(
-        Object.values(merged),
-        config.momentumThreshold,
-        config.velocityThreshold
-      );
-      const sortedData = sortCoins(processedData, sortField, sortDirection);
-      console.log(coinsData)
-      setCoinsData(sortedData);
-      updateStats(sortedData);
-      setLastUpdated(new Date().toLocaleTimeString());
-      setErrorMessage('');
-
-      return merged;
+    // 4. Merge fetched data back into trackedCoins
+    fetchedCoins.forEach(coin => {
+      if (updatedTrackedCoins[coin.mint]) {
+        updatedTrackedCoins[coin.mint] = {
+          ...updatedTrackedCoins[coin.mint],
+          ...coin,
+          lastUpdated: new Date()
+        };
+      }
     });
+
+    // 5. Process & sort
+    const processedData = processData(
+      Object.values(updatedTrackedCoins),
+      config.momentumThreshold,
+      config.velocityThreshold
+    );
+    const sortedData = sortCoins(processedData, sortField, sortDirection);
+
+    // 6. Push final state updates ONCE
+    setTrackedCoins(updatedTrackedCoins);
+    setCoinsData(sortedData);
+    updateStats(sortedData);
+    setLastUpdated(new Date().toLocaleTimeString());
+    setErrorMessage('');
+
   } catch (error) {
     console.error('Error updating coins data:', error);
     setErrorMessage('Failed to update coins data. Please check your API key and try again.');
   }
-};
-
-
+}; 
 
 
   const fetchTradingData = async (coins) => {
+    console.log("helius key", heliusAPIKey)
   if (!heliusAPIKey) {
     setErrorMessage('Please enter your Helius API key');
     return coins;
   }
 
   const coinsWithDetails = [];
-
-  // Solana public RPC endpoint (you can swap for Ankr, Chainstack, etc.)
-  const solanaRPC = "https://api.mainnet-beta.solana.com";
-
+  console.log("coins", coins)
   for (const coin of coins) {
     let address = coin.mint;
-    if (address.endsWith("pump")) {
-      address = address.replace("pump", "");
-    }
-
     try {
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      // First try Helius
       let response = await fetch(
         `${config.heliusAPI}addresses/${address}/transactions?api-key=${heliusAPIKey}&limit=100`
       );
 
-      // If Helius fails (429 or other), fallback to Solana RPC
-      if (!response.ok) {
-        console.warn(`Helius failed (${response.status}) for ${coin.symbol}, using Solana RPC fallback...`);
-
-        const rpcPayload = {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "getSignaturesForAddress",
-          params: [address, { limit: 100 }]
-        };
-
-        response = await fetch(solanaRPC, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(rpcPayload)
-        });
-
-        if (!response.ok) {
-          console.warn(`Fallback RPC also failed for ${coin.symbol} (${response.status})`);
-          coinsWithDetails.push(coin);
-          continue;
-        }
-      }
-
       const transactions = await response.json();
+
+      console.log("Transactions", transactions)
 
       // Normalize transactions:
       // If Helius → already parsed JSON array
@@ -318,7 +285,7 @@ function App() {
       });
 
     } catch (error) {
-      console.warn(`Error processing data for ${coin.symbol}:`, error);
+      console.log(`Error processing data for ${coin.symbol}:`, error);
       coinsWithDetails.push(coin);
     }
   }

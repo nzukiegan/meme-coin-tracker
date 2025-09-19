@@ -1,38 +1,222 @@
-.App {
-  text-align: center;
+/* Copy all the CSS from your original HTML file here */
+:root {
+  --green: #4caf50;
+  --light-green: #e8f5e9;
+  --red: #f44336;
+  --light-red: #ffebee;
+  --yellow: #ffc107;
+  --light-yellow: #fff8e1;
+  --gray: #f5f5f5;
+  --dark-gray: #333;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f9f9f9;
+  color: #333;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+.container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+h1 {
+  margin: 0;
+  color: #333;
+}
+
+.controls {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.control-group {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
+  gap: 5px;
+}
+
+label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+input, select {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+button {
+  background-color: #4285f4;
   color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
 }
 
-.App-link {
-  color: #61dafb;
+button:hover {
+  background-color: #3367d6;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
+.api-key-section {
+  background: #fff3cd;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border-left: 4px solid #ffc107;
+}
+
+.api-key-section h3 {
+  margin-top: 0;
+}
+
+.stats {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.stat-card {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  flex: 1;
+  min-width: 200px;
+}
+
+.stat-card h3 {
+  margin: 0 0 10px 0;
+  font-size: 1rem;
+  color: #666;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+th, td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+th {
+  background-color: #f5f5f5;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+th:hover {
+  background-color: #eee;
+}
+
+tr:hover {
+  background-color: #f9f9f9;
+}
+
+.signal-green {
+  background-color: var(--light-green);
+}
+
+.signal-red {
+  background-color: var(--light-red);
+}
+
+.signal-yellow {
+  background-color: var(--light-yellow);
+}
+
+.signal-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.signal-indicator.green {
+  background-color: var(--green);
+}
+
+.signal-indicator.red {
+  background-color: var(--red);
+}
+
+.signal-indicator.yellow {
+  background-color: var(--yellow);
+}
+
+.positive {
+  color: var(--green);
+  font-weight: bold;
+}
+
+.negative {
+  color: var(--red);
+  font-weight: bold;
+}
+
+.sparkline {
+  display: inline-block;
+  width: 60px;
+  height: 20px;
+}
+
+.loading {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+}
+
+.error {
+  color: var(--red);
+  padding: 10px;
+  background-color: var(--light-red);
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+@media (max-width: 768px) {
+  .controls, .stats {
+    flex-direction: column;
   }
-  to {
-    transform: rotate(360deg);
+  
+  th, td {
+    padding: 8px 10px;
+    font-size: 0.9rem;
   }
 }

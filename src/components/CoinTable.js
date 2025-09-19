@@ -17,7 +17,7 @@ const CoinTable = ({ coinsData, sortField, sortDirection, onSort }) => {
       <table id="coins-table">
         <tbody>
           <tr>
-            <td colSpan="12" className="loading">No coins match your criteria</td>
+            <td colSpan="12" className="loading">Loading coins</td>
           </tr>
         </tbody>
       </table>

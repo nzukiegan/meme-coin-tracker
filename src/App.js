@@ -202,114 +202,91 @@ function App() {
 
 
   const fetchTradingData = async (coins) => {
-    if (!heliusAPIKey) {
-      setErrorMessage('Please enter your Helius API key');
-      return coins;
+  if (!heliusAPIKey) {
+    setErrorMessage('Please enter your Helius API key');
+    return coins;
+  }
+
+  const coinsWithDetails = [];
+
+  for (const coin of coins) {
+    let address = coin.mint;
+    if (address.endsWith("pump")) {
+      address = address.replace("pump", "");
     }
-    
-    const coinsWithDetails = [];
-    
-    for (const coin of coins) {
-      try {
-        const response = await fetch(
-          `${config.heliusAPI}addresses/${coin.mint}/transactions?api-key=${heliusAPIKey}&limit=100`
-        );
-        
-        if (!response.ok) {
-          console.warn(`Failed to fetch transactions for ${coin.symbol}`);
-          // Keep the existing data if we can't fetch new data
-          coinsWithDetails.push(coin);
-          continue;
-        }
-        
-        const transactions = await response.json();
-        
-        const now = Date.now();
-        const oneMinAgo = now - 60 * 1000;
-        const fiveMinAgo = now - 5 * 60 * 1000;
-        const thirtySecAgo = now - 30 * 1000;
-        const fifteenSecAgo = now - 15 * 1000;
-        
-        let volume15s = 0, volume30s = 0, volume1m = 0, volume5m = 0;
-        let tx15s = 0, tx30s = 0, tx1m = 0, tx5m = 0;
-        let buys15s = 0, buys30s = 0, buys1m = 0, buys5m = 0;
-        let sells15s = 0, sells30s = 0, sells1m = 0, sells5m = 0;
-        
-        transactions.forEach(tx => {
-          if (!tx.timestamp) return;
-          const txTime = new Date(tx.timestamp * 1000).getTime();
 
-          const isBuy = isBuyTransaction(tx, coin.mint);
-          const amount = getTransactionAmount(tx, coin.mint) || 0;
+    try {
+      await new Promise(resolve => setTimeout(resolve, 200));
 
-          // 5 min
-          if (txTime >= fiveMinAgo) {
-            volume5m += amount;
-            tx5m++;
-            if (isBuy) buys5m++; else sells5m++;
-          }
+      const response = await fetch(
+        `${config.heliusAPI}addresses/${address}/transactions?api-key=${heliusAPIKey}&limit=100`
+      );
 
-          // 1 min
-          if (txTime >= oneMinAgo) {
-            volume1m += amount;
-            tx1m++;
-            if (isBuy) buys1m++; else sells1m++;
-          }
-
-          // 30s
-          if (txTime >= thirtySecAgo) {
-            volume30s += amount;
-            tx30s++;
-            if (isBuy) buys30s++; else sells30s++;
-          }
-
-          // 15s
-          if (txTime >= fifteenSecAgo) {
-            volume15s += amount;
-            tx15s++;
-            if (isBuy) buys15s++; else sells15s++;
-          }
-        });
-        
-        // Add to our detailed coins list
-        coinsWithDetails.push({
-          ...coin,
-          // 15s metrics
-          volume15s,
-          transactions15s: tx15s,
-          buys15s,
-          sells15s,
-          
-          // 30s metrics
-          volume30s,
-          transactions30s: tx30s,
-          buys30s,
-          sells30s,
-          
-          // 1m metrics
-          volume1m,
-          transactions1m: tx1m,
-          buys1m,
-          sells1m,
-          
-          // 5m metrics
-          volume5m,
-          transactions5m: tx5m,
-          buys5m,
-          sells5m,
-          
-          lastUpdated: new Date()
-        });
-        
-      } catch (error) {
-        console.warn(`Error processing data for ${coin.symbol}:`, error);
-        // Keep the existing data if there's an error
-        coinsWithDetails.push(coin);
+      if (response.status === 429) {
+        console.warn(`Rate limit hit for ${coin.symbol}, retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
       }
+
+      if (!response.ok) {
+        console.warn(`Failed to fetch transactions for ${coin.symbol} (${response.status})`);
+        coinsWithDetails.push(coin);
+        continue;
+      }
+
+      const transactions = await response.json();
+
+      // 🔹 Your existing logic to calculate volumes/transactions
+      const now = Date.now();
+      const oneMinAgo = now - 60 * 1000;
+      const fiveMinAgo = now - 5 * 60 * 1000;
+      const thirtySecAgo = now - 30 * 1000;
+      const fifteenSecAgo = now - 15 * 1000;
+
+      let volume15s = 0, volume30s = 0, volume1m = 0, volume5m = 0;
+      let tx15s = 0, tx30s = 0, tx1m = 0, tx5m = 0;
+      let buys15s = 0, buys30s = 0, buys1m = 0, buys5m = 0;
+      let sells15s = 0, sells30s = 0, sells1m = 0, sells5m = 0;
+
+      transactions.forEach(tx => {
+        if (!tx.timestamp) return;
+        const txTime = new Date(tx.timestamp * 1000).getTime();
+
+        const isBuy = isBuyTransaction(tx, coin.mint);
+        const amount = getTransactionAmount(tx, coin.mint) || 0;
+
+        if (txTime >= fiveMinAgo) {
+          volume5m += amount; tx5m++; if (isBuy) buys5m++; else sells5m++;
+        }
+        if (txTime >= oneMinAgo) {
+          volume1m += amount; tx1m++; if (isBuy) buys1m++; else sells1m++;
+        }
+        if (txTime >= thirtySecAgo) {
+          volume30s += amount; tx30s++; if (isBuy) buys30s++; else sells30s++;
+        }
+        if (txTime >= fifteenSecAgo) {
+          volume15s += amount; tx15s++; if (isBuy) buys15s++; else sells15s++;
+        }
+      });
+
+      coinsWithDetails.push({
+        ...coin,
+        volume15s, transactions15s: tx15s, buys15s, sells15s,
+        volume30s, transactions30s: tx30s, buys30s, sells30s,
+        volume1m, transactions1m: tx1m, buys1m, sells1m,
+        volume5m, transactions5m: tx5m, buys5m, sells5m,
+        lastUpdated: new Date()
+      });
+
+    } catch (error) {
+      console.warn(`Error processing data for ${coin.symbol}:`, error);
+      coinsWithDetails.push(coin); // keep existing coin if error
     }
-    
-    return coinsWithDetails;
-  };
+  }
+
+  return coinsWithDetails;
+};
+
 
   const sortCoins = (coins, field, direction) => {
     return [...coins].sort((a, b) => {

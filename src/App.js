@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
-import ApiConfig from './components/ApiConfig';
 import Controls from './components/Controls';
 import Stats from './components/Stats';
 import CoinTable from './components/CoinTable';
@@ -37,7 +36,7 @@ function App() {
   const refreshIntervalId = useRef(null);
 
   useEffect(() => {
-    const savedKey = localStorage.getItem('heliusApiKey');
+    const savedKey = process.env.REACT_APP_HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY
     if (savedKey) {
       setHeliusAPIKey(savedKey);
     }
@@ -52,6 +51,21 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    initPumpPortalWS();
+    startPeriodicUpdate();
+
+    return () => {
+      if (refreshIntervalId.current) {
+        clearInterval(refreshIntervalId.current);
+      }
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.close();
+      }
+    };
+  }, []);
+
+
   const initPumpPortalWS = () => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
 
@@ -59,8 +73,11 @@ function App() {
 
     ws.current.onopen = () => {
       console.log('Connected to PumpPortal WebSocket');
-      ws.current.send(JSON.stringify({ method: 'subscribeNewToken' }));
-      ws.current.send(JSON.stringify({ method: 'subscribeMigration' }));
+      // wait 3 seconds before sending
+      setTimeout(() => {
+        ws.current.send(JSON.stringify({ method: 'subscribeNewToken' }));
+        ws.current.send(JSON.stringify({ method: 'subscribeMigration' }));
+      }, 3000);
     };
 
     ws.current.onmessage = (event) => {
@@ -99,13 +116,6 @@ function App() {
     ws.current.onclose = () => console.log('PumpPortal WebSocket closed');
   };
 
-  const handleSaveApiKey = (key) => {
-    setHeliusAPIKey(key);
-    localStorage.setItem('heliusApiKey', key);
-    initPumpPortalWS();
-    startPeriodicUpdate();
-  };
-
   const handleApplySettings = (settings) => {
     const newConfig = {
       ...config,
@@ -121,7 +131,6 @@ function App() {
     if (refreshIntervalId.current) {
       clearInterval(refreshIntervalId.current);
     }
-    startPeriodicUpdate();
   };
 
   const handleSort = (field) => {
@@ -147,7 +156,6 @@ function App() {
 
   const updateCoinsData = async () => {
   try {
-    // 1. Ensure new coins are added
     setTrackedCoins(prevTracked => {
       const updated = { ...prevTracked };
 
@@ -201,6 +209,8 @@ function App() {
 };
 
 
+
+
   const fetchTradingData = async (coins) => {
   if (!heliusAPIKey) {
     setErrorMessage('Please enter your Helius API key');
@@ -208,6 +218,9 @@ function App() {
   }
 
   const coinsWithDetails = [];
+
+  // Solana public RPC endpoint (you can swap for Ankr, Chainstack, etc.)
+  const solanaRPC = "https://api.mainnet-beta.solana.com";
 
   for (const coin of coins) {
     let address = coin.mint;
@@ -218,25 +231,51 @@ function App() {
     try {
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      const response = await fetch(
+      // First try Helius
+      let response = await fetch(
         `${config.heliusAPI}addresses/${address}/transactions?api-key=${heliusAPIKey}&limit=100`
       );
 
-      if (response.status === 429) {
-        console.warn(`Rate limit hit for ${coin.symbol}, retrying...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        continue;
-      }
-
+      // If Helius fails (429 or other), fallback to Solana RPC
       if (!response.ok) {
-        console.warn(`Failed to fetch transactions for ${coin.symbol} (${response.status})`);
-        coinsWithDetails.push(coin);
-        continue;
+        console.warn(`Helius failed (${response.status}) for ${coin.symbol}, using Solana RPC fallback...`);
+
+        const rpcPayload = {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getSignaturesForAddress",
+          params: [address, { limit: 100 }]
+        };
+
+        response = await fetch(solanaRPC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(rpcPayload)
+        });
+
+        if (!response.ok) {
+          console.warn(`Fallback RPC also failed for ${coin.symbol} (${response.status})`);
+          coinsWithDetails.push(coin);
+          continue;
+        }
       }
 
       const transactions = await response.json();
 
-      // 🔹 Your existing logic to calculate volumes/transactions
+      // Normalize transactions:
+      // If Helius → already parsed JSON array
+      // If Solana RPC → wrap into same format (timestamp + signature)
+      let txList = [];
+      if (transactions.value) {
+        txList = transactions.value.map(sig => ({
+          signature: sig.signature,
+          timestamp: sig.blockTime || 0
+        }));
+      } else {
+        txList = transactions;
+      }
+
+      // 🔹 Existing aggregation logic
       const now = Date.now();
       const oneMinAgo = now - 60 * 1000;
       const fiveMinAgo = now - 5 * 60 * 1000;
@@ -248,8 +287,8 @@ function App() {
       let buys15s = 0, buys30s = 0, buys1m = 0, buys5m = 0;
       let sells15s = 0, sells30s = 0, sells1m = 0, sells5m = 0;
 
-      transactions.forEach(tx => {
-        if (!tx.timestamp) return;
+      for (const tx of txList) {
+        if (!tx.timestamp) continue;
         const txTime = new Date(tx.timestamp * 1000).getTime();
 
         const isBuy = isBuyTransaction(tx, coin.mint);
@@ -267,7 +306,7 @@ function App() {
         if (txTime >= fifteenSecAgo) {
           volume15s += amount; tx15s++; if (isBuy) buys15s++; else sells15s++;
         }
-      });
+      }
 
       coinsWithDetails.push({
         ...coin,
@@ -280,7 +319,7 @@ function App() {
 
     } catch (error) {
       console.warn(`Error processing data for ${coin.symbol}:`, error);
-      coinsWithDetails.push(coin); // keep existing coin if error
+      coinsWithDetails.push(coin);
     }
   }
 
@@ -349,8 +388,6 @@ function App() {
   return (
     <div className="container">
       <Header lastUpdated={lastUpdated} />
-      
-      <ApiConfig onSaveApiKey={handleSaveApiKey} />
       
       <Controls 
         minMarketCap={config.minMarketCap}

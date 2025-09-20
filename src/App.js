@@ -33,11 +33,12 @@ function App() {
     lastSignal: '-'
   });
   const [errorMessage, setErrorMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(true); // Added loading state
+  const [isLoading, setIsLoading] = useState(true);
   
   const preMigrationTokens = useRef({});
   const ws = useRef(null);
   const refreshIntervalId = useRef(null);
+  const initialLoadRef = useRef(false);
 
   useEffect(() => {
     const savedKey = process.env.REACT_APP_HELIUS_API_KEY
@@ -226,6 +227,7 @@ function App() {
   const updateCoinsData = async () => {
     console.log(config)
   try {
+    if (!initialLoadRef.current) setIsLoading(true);
     // 1. Clone current tracked coins
     let updatedTrackedCoins = { ...trackedCoins };
 
@@ -305,20 +307,11 @@ function App() {
       'Failed to update coins data. Please check your API key and try again.'
     );
   } finally {
-    setIsLoading(false)
+    if (!initialLoadRef.current) {
+      setIsLoading(false);
+      initialLoadRef.current = true;
+    }
   }
-};
-
-
-const ProgressBar = ({ isLoading }) => {
-  return isLoading ? (
-    <div className="progress-bar-container">
-      <div className="progress-bar">
-        <div className="progress-bar-fill"></div>
-      </div>
-      <div className="progress-text">Loading coins data...</div>
-    </div>
-  ) : null;
 };
 
 const fetchTradingData = async (coins) => {

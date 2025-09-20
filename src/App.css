@@ -467,3 +467,42 @@ tr:hover {
   font-size: 12px;
   font-weight: bold;
 }
+
+/* spinner container (centers the spinner & label) */
+.spinner-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 0;
+}
+
+/* simple circular spinner using border trick */
+.spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 5px solid rgba(0,0,0,0.12);
+  border-top-color: #1976d2; /* accent color (change if you want) */
+  animation: spinner-rotate 0.9s linear infinite;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+/* small loading text */
+.loading-text {
+  font-size: 13px;
+  color: #333;
+  opacity: 0.9;
+}
+
+/* animation */
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* optional: keep table cell from collapsing */
+#coins-table td.loading {
+  padding: 12px;
+  text-align: center;
+}

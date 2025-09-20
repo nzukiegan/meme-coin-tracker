@@ -110,43 +110,15 @@ const renderVolumeBars = (volume15s, volume5m) => {
         <table id="coins-table">
           <tbody>
             <tr>
-              <td colSpan="7" className="loading">Loading coins</td>
+              <td colSpan="7" className="loading">
+                <div className="spinner-container" role="status" aria-live="polite" aria-label="Loading coins">
+                  <div className="spinner" />
+                  <div className="loading-text">Loading coins…</div>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
-        <div className="legend">
-          <h3>Legend</h3>
-          <div className="legend-item">
-            <span className="legend-label">Volume Momentum:</span>
-            <div className="volume-bars">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="volume-bar active" style={{width: `${(i+1)*20}px`}}></div>
-              ))}
-            </div>
-            <span>More bars = higher volume spike</span>
-          </div>
-          <div className="legend-item">
-            <span className="legend-label">Buy/Sell Ratio:</span>
-            <div className="buy-sell-bars">
-              <div className="buy-bar" style={{width: '75%'}}></div>
-              <div className="sell-bar" style={{width: '25%'}}></div>
-            </div>
-            <span>More green = stronger buy pressure</span>
-          </div>
-          <div className="legend-item">
-            <span className="legend-label">Liquidity Change:</span>
-            <div className="liquidity-change">
-              <div className="liquidity-bar positive" style={{width: '40%'}}></div>
-              <span>Green = added, Red = removed</span>
-            </div>
-          </div>
-          <div className="legend-item">
-            <span className="legend-label">Status:</span>
-            <span className="status buy">BUY 🟢</span>
-            <span className="status hold">HOLD ⏸</span>
-            <span className="status sell">SELL 🔴</span>
-          </div>
-        </div>
       </div>
     );
   }

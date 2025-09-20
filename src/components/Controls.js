@@ -7,6 +7,7 @@ const Controls = ({
   momentumThreshold, 
   velocityThreshold, 
   refreshInterval,
+  maxCoinsToTrack, // Added max coins
   onApplySettings 
 }) => {
   const [settings, setSettings] = useState({
@@ -15,7 +16,8 @@ const Controls = ({
     minLiquidity: minLiquidity || 1,
     momentumThreshold: momentumThreshold || 50,
     velocityThreshold: velocityThreshold || 2,
-    refreshInterval: refreshInterval || 30
+    refreshInterval: refreshInterval || 3, // Changed to 3 seconds
+    maxCoinsToTrack: maxCoinsToTrack || 50 // Added max coins
   });
 
   const handleChange = (e) => {
@@ -94,7 +96,19 @@ const Controls = ({
           type="number" 
           id="refreshInterval" 
           value={settings.refreshInterval} 
-          min="5"
+          min="1" // Changed minimum to 1 second
+          onChange={handleChange}
+        />
+      </div>
+      
+      {/* Added max coins to track field */}
+      <div className="control-group">
+        <label htmlFor="max-coins-to-track">Max Coins to Track</label>
+        <input 
+          type="number" 
+          id="maxCoinsToTrack" 
+          value={settings.maxCoinsToTrack} 
+          min="1"
           onChange={handleChange}
         />
       </div>

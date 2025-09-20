@@ -58,6 +58,7 @@ function App() {
   }, []);
 
   useEffect(() => {
+    console.log("coins data", coinsData)
     coinsData.forEach(coin => {
       if (coin.signal === 'BUY') {
         // Check if we already alerted for this coin recently
@@ -224,34 +225,31 @@ function App() {
     }, config.refreshInterval);
   };
 
-  const updateCoinsData = async () => {
-    console.log(config)
+const updateCoinsData = async () => {
   try {
     if (!initialLoadRef.current) setIsLoading(true);
-    // 1. Clone current tracked coins
+
     let updatedTrackedCoins = { ...trackedCoins };
 
-    // 2. Ensure pre-migration tokens are included
-    const newCoins = Object.values(preMigrationTokens.current)
-      .filter(t => t.is_pre_migration);
+    const newCoins = Object.values(preMigrationTokens.current).filter(t => t.is_pre_migration);
+    let currentCount = Object.keys(updatedTrackedCoins).length;
 
-    newCoins.forEach(coin => {
-      if (!updatedTrackedCoins[coin.mint]) {
-        updatedTrackedCoins[coin.mint] = {
-          ...coin,
-          volume15s: 0, volume30s: 0, volume1m: 0, volume5m: 0,
-          transactions15s: 0, transactions30s: 0, transactions1m: 0, transactions5m: 0,
-          buys15s: 0, buys30s: 0, buys1m: 0, buys5m: 0,
-          sells15s: 0, sells30s: 0, sells1m: 0, sells5m: 0,
-          lastUpdated: new Date()
-        };
-      }
-    });
+    for (const coin of newCoins) {
+      if (updatedTrackedCoins[coin.mint]) continue;
+      if (currentCount >= config.maxCoinsToTrack) break;
+      updatedTrackedCoins[coin.mint] = {
+        ...coin,
+        volume15s: 0, volume30s: 0, volume1m: 0, volume5m: 0,
+        transactions15s: 0, transactions30s: 0, transactions1m: 0, transactions5m: 0,
+        buys15s: 0, buys30s: 0, buys1m: 0, buys5m: 0,
+        sells15s: 0, sells30s: 0, sells1m: 0, sells5m: 0,
+        lastUpdated: new Date()
+      };
+      currentCount++;
+    }
 
-    // 3. Fetch trading data
     const fetchedCoins = await fetchTradingData(Object.values(updatedTrackedCoins));
 
-    // 4. Merge fetched data back in
     fetchedCoins.forEach(coin => {
       if (updatedTrackedCoins[coin.mint]) {
         updatedTrackedCoins[coin.mint] = {
@@ -262,10 +260,13 @@ function App() {
       }
     });
 
-    // 4b. Compute liquidity change (% diff since last update)
     Object.keys(updatedTrackedCoins).forEach(mint => {
       const coin = updatedTrackedCoins[mint];
-      if (coin.prevLiquidity !== undefined && coin.liquidity !== undefined) {
+      if (
+        typeof coin.prevLiquidity === 'number' &&
+        typeof coin.liquidity === 'number' &&
+        coin.prevLiquidity > 0
+      ) {
         const diff = coin.liquidity - coin.prevLiquidity;
         coin.liquidityChange = (diff / coin.prevLiquidity) * 100;
       } else {
@@ -275,10 +276,12 @@ function App() {
     });
 
     let trackedCoinsArray = Object.values(updatedTrackedCoins);
-
     if (trackedCoinsArray.length > config.maxCoinsToTrack) {
-
-      const keepMints = new Set(Object.keys(trackedCoins).slice(0, config.maxCoinsToTrack));
+      const previousKeys = Object.keys(trackedCoins);
+      const keysSource = (previousKeys && previousKeys.length > 0)
+        ? previousKeys
+        : Object.keys(updatedTrackedCoins);
+      const keepMints = new Set(keysSource.slice(0, config.maxCoinsToTrack));
 
       Object.keys(updatedTrackedCoins).forEach(mint => {
         if (!keepMints.has(mint)) {
@@ -287,7 +290,6 @@ function App() {
       });
     }
 
-    // 6. Process & sort
     const processedData = processData(
       Object.values(updatedTrackedCoins),
       config.momentumThreshold,
@@ -295,34 +297,51 @@ function App() {
     );
     const sortedData = sortCoins(processedData, sortField, sortDirection);
 
-    // 7. Push updates once
-    setTrackedCoins(updatedTrackedCoins);
-    setCoinsData(sortedData);
-    updateStats(sortedData);
-    setLastUpdated(new Date().toLocaleTimeString());
+    console.debug('updatedTrackedCoins count:', Object.keys(updatedTrackedCoins).length);
+    console.debug('processedData count:', processedData.length);
+    console.debug('sortedData count:', sortedData.length);
+
+    const hasTrackedCoins = Object.keys(updatedTrackedCoins).length > 0;
+
+    if (!hasTrackedCoins) {
+      setTrackedCoins({});
+      setCoinsData([]);
+      updateStats([]);
+      setLastUpdated(new Date().toLocaleTimeString());
+      if (!initialLoadRef.current) {
+        setIsLoading(false);
+        initialLoadRef.current = true;
+      }
+    } else if (processedData.length === 0) {
+      setTrackedCoins(updatedTrackedCoins);
+      console.warn('Processed data empty — keeping previous coinsData until valid data returns.');
+    } else {
+      setTrackedCoins(updatedTrackedCoins);
+      setCoinsData(sortedData);
+      updateStats(sortedData);
+      setLastUpdated(new Date().toLocaleTimeString());
+
+      if (!initialLoadRef.current) {
+        setIsLoading(false);
+        initialLoadRef.current = true;
+      }
+    }
+
     setErrorMessage('');
   } catch (error) {
     console.error('Error updating coins data:', error);
-    setErrorMessage(
-      'Failed to update coins data. Please check your API key and try again.'
-    );
-  } finally {
-    if (!initialLoadRef.current) {
-      setIsLoading(false);
-      initialLoadRef.current = true;
-    }
+    setErrorMessage('Failed to update coins data. Please check your API key and try again.');
   }
 };
 
+
 const fetchTradingData = async (coins) => {
-  console.log("helius key", heliusAPIKey)
   if (!heliusAPIKey) {
     setErrorMessage('Please enter your Helius API key');
     return coins;
   }
 
   const coinsWithDetails = [];
-  console.log("coins", coins)
   for (const coin of coins) {
     const address = coin.mint;
     try {
@@ -336,29 +355,18 @@ const fetchTradingData = async (coins) => {
       }
 
       const transactions = await response.json();
-      console.log("Transactions ", transactions)
-      // DEBUG: inspect shape (first time only)
-      // console.debug('raw tx response', transactions);
-
-      // Normalize txList to be an array of full transaction objects that include a blockTime
       let txList = [];
       if (Array.isArray(transactions)) {
-        // Some endpoints return an array of full tx objects
         txList = transactions;
       } else if (transactions.value && Array.isArray(transactions.value)) {
-        // Helius sometimes returns { value: [...] } where each element may already be a full tx obj
         txList = transactions.value;
       } else if (transactions.results && Array.isArray(transactions.results)) {
         txList = transactions.results;
       } else {
-        // Last-resort: if the response looks like a list of signatures, keep them but we won't be able to get amounts
         console.warn('Unexpected tx response shape for', address);
         txList = transactions;
       }
 
-      // If txList elements are signatures only (string or object with signature), we can't compute amounts.
-      // So try to keep the whole parsed tx object. If only signatures are present, we should fetch parsed txs individually
-      // (that's expensive) — for now log and continue.
       const now = Date.now();
       const oneMinAgo = now - 60 * 1000;
       const fiveMinAgo = now - 5 * 60 * 1000;
@@ -370,33 +378,24 @@ const fetchTradingData = async (coins) => {
       let buys15s = 0, buys30s = 0, buys1m = 0, buys5m = 0;
       let sells15s = 0, sells30s = 0, sells1m = 0, sells5m = 0;
 
-      // If txList elements are minimal (only signature), try to detect and bail gracefully:
       const sample = txList[0];
       const hasFullTxData = sample && (sample.transaction || sample.meta || sample.blockTime || sample.parsed || sample.timestamp);
 
       if (!hasFullTxData) {
-        // We don't have full tx body — attempt to fetch parsed transactions individually would be here.
-        // For now, compute counts by timestamp if available, but amounts will be zero.
         console.warn(`Tx list for ${address} doesn't include parsed data. Volumes will be zero.`);
       }
 
       for (const tx of txList) {
-        // blockTime vs timestamp vs unix seconds — normalize:
         let txTimestampSec = null;
         if (tx.blockTime) txTimestampSec = tx.blockTime;
         else if (tx.timestamp) txTimestampSec = tx.timestamp;
         else if (tx.block && tx.block.time) txTimestampSec = tx.block.time;
-        // If txTimestampSec is still null, skip (can't time-window it)
         if (!txTimestampSec) continue;
 
         const txTime = new Date(txTimestampSec * 1000).getTime();
-
-        // isBuyTransaction and getTransactionAmount must accept the shape Helius returns
-        // If your helper expects a raw parsed tx, pass tx. If it expects different shape, adapt accordingly.
         const isBuy = isBuyTransaction(tx, coin.mint);
         let amount = getTransactionAmount(tx, coin.mint);
 
-        // fallback: sometimes helper returns undefined — attempt to parse lamports from logs or set 0
         if (typeof amount !== 'number') {
           amount = 0;
         }
@@ -423,8 +422,6 @@ const fetchTradingData = async (coins) => {
         volume5m, transactions5m: tx5m, buys5m, sells5m,
         lastUpdated: new Date()
       });
-
-      console.log("Coins with details ", coinsWithDetails.slice(-1));
     } catch (error) {
       console.log(`Error processing data for ${coin.symbol}:`, error);
       coinsWithDetails.push(coin);
@@ -439,8 +436,6 @@ const fetchTradingData = async (coins) => {
     return [...coins].sort((a, b) => {
       let valueA = a[field];
       let valueB = b[field];
-      
-      // Handle special case for buySellRatio which is now a string "a:b"
       if (field === 'buySellRatio') {
         const [buysA, sellsA] = a.buySellRatio.split(':').map(Number);
         const [buysB, sellsB] = b.buySellRatio.split(':').map(Number);
@@ -482,21 +477,12 @@ const fetchTradingData = async (coins) => {
 
   setStats({
     trackedCoins: filteredCoins.length,
-    greenSignals: buySignals,   // <-- now matches Stats props
-    redSignals: sellSignals,    // <-- now matches Stats props
+    greenSignals: buySignals,
+    redSignals: sellSignals,
     lastSignal
   });
 };
 
-
-
-  useEffect(() => {
-    if (coinsData.length > 0) {
-      const sortedData = sortCoins(coinsData, sortField, sortDirection);
-      console.log("Coins data ", coinsData)
-      setCoinsData(sortedData);
-    }
-  }, [sortField, sortDirection]);
 
     return (
     <div className="container">

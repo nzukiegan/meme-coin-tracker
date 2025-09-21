@@ -13,34 +13,35 @@ const CoinTable = ({ coinsData, sortField, sortDirection, onSort }) => {
   };
 
   // Function to render volume momentum bars with different colors
-const renderVolumeBars = (volume15s, volume5m) => {
-  const avgVolume5m = volume5m / 300; // Convert 5m volume to per second
-  const ratio = avgVolume5m > 0 ? volume15s / avgVolume5m : 0;
-  const barCount = Math.min(5, Math.max(1, Math.floor(ratio)));
-  
-  let barColor = '#4caf50';
-  if (ratio >= 5) barColor = '#f44336';
-  else if (ratio >= 3) barColor = '#ff9800';
-  else if (ratio >= 2) barColor = '#ffeb3b';
-  
-  return (
-    <div className="volume-bars">
-      {[...Array(5)].map((_, i) => (
-        <div 
-          key={i} 
-          className={`volume-bar ${i < barCount ? 'active' : ''}`}
-          style={{
-            width: `${(i+1)*15}px`,
-            backgroundColor: i < barCount ? barColor : '#eee'
-          }}
-        ></div>
-      ))}
-      <span className="volume-ratio" style={{color: barColor}}>
-        ({ratio.toFixed(1)}x)
-      </span>
-    </div>
-  );
-};
+  const renderVolumeBars = (momentum) => {
+    const ratio = momentum;
+    const barCount = Math.min(5, Math.max(0, Math.floor(ratio)));
+
+    let barColor = '#4caf50';
+    if (ratio >= 10) barColor = '#f44336';
+    else if (ratio >= 5) barColor = '#ff9800';
+    else if (ratio >= 2) barColor = '#ffeb3b';
+
+    return (
+      <div className="volume-bars">
+        {[...Array(5)].map((_, i) => (
+          <div
+            key={i}
+            className={`volume-bar ${i < barCount ? 'active' : ''}`}
+            style={{
+              width: `${(i + 1) * 15}px`,
+              backgroundColor: i < barCount ? barColor : '#eee'
+            }}
+          />
+        ))}
+        <span className="volume-ratio" style={{color: barColor}}>
+          ({ratio.toFixed(2)}x)
+        </span>
+      </div>
+    );
+  };
+
+
 
 
   // Function to render buy/sell ratio bars
@@ -73,36 +74,28 @@ const renderVolumeBars = (volume15s, volume5m) => {
     );
   };
 
-  // Function to determine status with icon
   const renderStatus = (coin) => {
-    const momentum = (coin.volume15s * 4) / (coin.volume5m / 60); // Normalized momentum
-    const buySellRatio = coin.sells5m > 0 ? coin.buys5m / coin.sells5m : coin.buys5m;
-    
-    let status = 'HOLD';
+    const signal = coin.signal || "HOLD"; 
+
     let icon = '⏸';
     let className = 'hold';
-    
-    // BUY Conditions
-    if (momentum >= 3 && buySellRatio >= 3 && coin.liquidityChange >= 0) {
-      status = 'BUY';
+
+    if (signal === "BUY") {
       icon = '🟢';
       className = 'buy';
-    }
-
-    // SELL Conditions
-    else if (momentum <= 1 && buySellRatio <= 0.8 && coin.liquidityChange < 0) {
-      status = 'SELL';
+    } else if (signal === "SELL") {
       icon = '🔴';
       className = 'sell';
     }
-    
+
     return (
       <div className={`status ${className}`}>
         <span className="status-icon">{icon}</span>
-        <span className="status-text">{status}</span>
+        <span className="status-text">{signal}</span>
       </div>
     );
   };
+
 
   if (coinsData.length === 0) {
     return (
@@ -155,8 +148,8 @@ const renderVolumeBars = (volume15s, volume5m) => {
           {coinsData.map(coin => (
             <tr key={coin.mint} className={coin.signal.toLowerCase()}>
               <td>{coin.name} ({coin.symbol})</td>
-              <td>{renderVolumeBars(coin.volume15s, coin.volume5m)}</td>
-              <td>{(coin.volume15s * 4 / (coin.volume5m / 60)).toFixed(1)}x</td>
+              <td>{renderVolumeBars(coin.momentum)}</td>
+              <td>{(coin.momentum ?? 0).toFixed(2)}x</td>
               <td>{renderBuySellBars(coin.buys5m, coin.sells5m)}</td>
               <td>{coin.liquidity.toFixed(2)} SOL</td>
               <td>{renderLiquidityChange(coin.liquidityChange || 0)}</td>

@@ -1,3 +1,4 @@
+// App.js — updated
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import Controls from './components/Controls';
@@ -6,26 +7,30 @@ import CoinTable from './components/CoinTable';
 import { isBuyTransaction, getTransactionAmount, processData } from './utils/helpers';
 import './App.css';
 
+
 function App() {
   const [config, setConfig] = useState({
     minMarketCap: 0,
     maxMarketCap: 100000,
     minLiquidity: 1,
-    momentumThreshold: 50,
+    momentumThreshold: 2,
     velocityThreshold: 2,
-    refreshInterval: 3000, // Changed from 30 to 3 seconds
+    refreshInterval: 3000, // milliseconds
     heliusAPI: 'https://api.helius.xyz/v0/',
-    maxCoinsToTrack: 20 // Added max coins to track
+    maxCoinsToTrack: 20
   });
-  
+
   const [coinsData, setCoinsData] = useState([]);
   const [trackedCoins, setTrackedCoins] = useState({});
   const [sortField, setSortField] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
-  const [alerts, setAlerts] = useState([])
+  const [alerts, setAlerts] = useState([]);
   const [heliusAPIKey, setHeliusAPIKey] = useState('');
   const [lastUpdated, setLastUpdated] = useState('-');
   const [isAPIKeyLoaded, setIsAPIKeyLoaded] = useState(false);
+  const trackedCoinsRef = useRef({});
+  const lastAlertRef = useRef({});
+  const lastBalancesRef = useRef({});
   const [stats, setStats] = useState({
     trackedCoins: 0,
     greenSignals: 0,
@@ -34,174 +39,372 @@ function App() {
   });
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  
-  const preMigrationTokens = useRef({});
-  const ws = useRef(null);
+
+  // refs
+  const preMigrationTokens = useRef({}); // { mint: { ... , firstSeen } }
+  const pumpWs = useRef(null);
+  const heliusWs = useRef(null);
   const refreshIntervalId = useRef(null);
   const initialLoadRef = useRef(false);
+  const reconnectBackoff = useRef(1000);
 
+  // Try to load a key from env if available
   useEffect(() => {
-    const savedKey = process.env.REACT_APP_HELIUS_API_KEY
+    const savedKey = process.env.REACT_APP_HELIUS_API_KEY;
     if (savedKey) {
       setHeliusAPIKey(savedKey);
       setIsAPIKeyLoaded(true);
     }
-    
+
     return () => {
-      if (refreshIntervalId.current) {
-        clearInterval(refreshIntervalId.current);
-      }
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.close();
-      }
+      if (refreshIntervalId.current) clearInterval(refreshIntervalId.current);
+      if (pumpWs.current && pumpWs.current.readyState === WebSocket.OPEN) pumpWs.current.close();
+      if (heliusWs.current && heliusWs.current.readyState === WebSocket.OPEN) heliusWs.current.close();
     };
   }, []);
 
-  useEffect(() => {
-    console.log("coins data", coinsData)
-    coinsData.forEach(coin => {
-      if (coin.signal === 'BUY') {
-        // Check if we already alerted for this coin recently
-        const alertExists = alerts.find(a => a.mint === coin.mint && a.type === 'BUY');
-        if (!alertExists) {
-          const newAlert = {
-            id: Date.now(),
-            type: 'BUY',
-            message: `BUY signal for ${coin.name} - Hold time: ${calculateHoldTime(
+useEffect(() => {
+  coinsData.forEach(coin => {
+    if (coin.signal === 'BUY' || coin.signal === 'SELL') {
+      const now = Date.now();
+      const lastForMint = lastAlertRef.current[coin.mint] || {};
+      const lastTime = lastForMint[coin.signal] || 0;
+
+      if (now - lastTime < 60000) return;
+
+      const newAlert = {
+        id: Date.now() + Math.random(),
+        type: coin.signal,
+        message: coin.signal === 'BUY'
+          ? `BUY signal for ${coin.name} - Hold time: ${calculateHoldTime(
               coin.momentum,
               coin.sells5m > 0 ? coin.buys5m / coin.sells5m : coin.buys5m,
               coin.liquidityChange || 0
-            )}`,
-            mint: coin.mint
-          };
-          setAlerts(prev => [...prev, newAlert]);
-          
-          // Auto remove alert after 10 seconds
-          setTimeout(() => {
-            setAlerts(prev => prev.filter(a => a.id !== newAlert.id));
-          }, 10000);
-        }
-      } else if (coin.signal === 'SELL') {
-        const alertExists = alerts.find(a => a.mint === coin.mint && a.type === 'SELL');
-        if (!alertExists) {
-          const newAlert = {
-            id: Date.now(),
-            type: 'SELL',
-            message: `SELL signal for ${coin.name} - Exit immediately`,
-            mint: coin.mint
-          };
-          setAlerts(prev => [...prev, newAlert]);
-          
-          setTimeout(() => {
-            setAlerts(prev => prev.filter(a => a.id !== newAlert.id));
-          }, 10000);
-        }
-      }
-    });
-  }, [coinsData]);
+            )}`
+          : `SELL signal for ${coin.name} - Exit immediately`,
+        mint: coin.mint
+      };
 
-  // Add this function to calculate hold time
+      // record the alert timestamp
+      lastAlertRef.current[coin.mint] = {
+        ...lastForMint,
+        [coin.signal]: now
+      };
+
+      setAlerts(prev => [...prev, newAlert]);
+      setTimeout(
+        () => setAlerts(prev => prev.filter(a => a.id !== newAlert.id)),
+        10000
+      );
+    }
+  });
+}, [coinsData]);
+
   const calculateHoldTime = (momentumScore, buySellRatio, liquidityChange) => {
     if (momentumScore >= 4 && buySellRatio >= 4 && liquidityChange >= 20) {
-      return "15-30 minutes";
+      return '15-30 minutes';
     } else if (momentumScore >= 3 && buySellRatio >= 3 && liquidityChange >= 10) {
-      return "5-15 minutes";
+      return '5-15 minutes';
     } else if (momentumScore <= 0.7 && buySellRatio <= 0.8 && liquidityChange < -10) {
-      return "Exit immediately";
+      return 'Exit immediately';
     } else if (momentumScore <= 1 && buySellRatio <= 1 && liquidityChange < -5) {
-      return "Within 1 minute";
+      return 'Within 1 minute';
     } else {
-      return "Monitor closely";
+      return 'Monitor closely';
     }
   };
 
-  // Add this component to render alerts
-  const AlertContainer = ({ alerts }) => {
-    return (
-      <div className="alert-container">
-        {alerts.map(alert => (
-          <div key={alert.id} className={`alert ${alert.type.toLowerCase()}`}>
-            {alert.message}
-          </div>
-        ))}
-      </div>
-    );
-  };
+  const AlertContainer = ({ alerts }) => (
+    <div className="alert-container">
+      {alerts.map(alert => (
+        <div key={alert.id} className={`alert ${alert.type.toLowerCase()}`}>
+          {alert.message}
+        </div>
+      ))}
+    </div>
+  );
 
+  // Start pump portal WS + helius WS when API key is loaded
   useEffect(() => {
     if (isAPIKeyLoaded) {
       initPumpPortalWS();
-      startPeriodicUpdate();
+      initHeliusWS();
     }
-  }, [isAPIKeyLoaded])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAPIKeyLoaded, config.maxCoinsToTrack]);
 
+  // PumpPortal WS: receives create/migrate events and stores tokens with firstSeen timestamp
   const initPumpPortalWS = () => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
+    if (pumpWs.current && pumpWs.current.readyState === WebSocket.OPEN) return;
 
-    ws.current = new WebSocket('wss://pumpportal.fun/api/data');
+    pumpWs.current = new WebSocket('wss://pumpportal.fun/api/data');
 
-    ws.current.onopen = () => {
+    pumpWs.current.onopen = () => {
       console.log('Connected to PumpPortal WebSocket');
-      // wait 3 seconds before sending
       setTimeout(() => {
-        ws.current.send(JSON.stringify({ method: 'subscribeNewToken' }));
-        ws.current.send(JSON.stringify({ method: 'subscribeMigration' }));
+        try {
+          pumpWs.current.send(JSON.stringify({ method: 'subscribeNewToken' }));
+          pumpWs.current.send(JSON.stringify({ method: 'subscribeMigration' }));
+        } catch (e) {
+          console.warn('PumpPortal send error', e);
+        }
       }, 3000);
     };
 
-    ws.current.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.txType === 'create') {
-        if (msg.name && msg.symbol && msg.mint) {
-          const price = msg.vSolInBondingCurve / msg.vTokensInBondingCurve;
+    pumpWs.current.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.txType === 'create') {
+          if (msg.name && msg.symbol && msg.mint) {
+            const price = msg.vSolInBondingCurve && msg.vTokensInBondingCurve
+              ? msg.vSolInBondingCurve / msg.vTokensInBondingCurve
+              : 0;
 
-          preMigrationTokens.current[msg.mint] = {
-            name: msg.name,
-            symbol: msg.symbol,
-            mint: msg.mint,
-            is_pre_migration: true,
-            marketCap: msg.marketCapSol,
-            liquidity: msg.vSolInBondingCurve,
-            price,
-            processed: false
-          };
+            preMigrationTokens.current[msg.mint] = {
+              name: msg.name,
+              symbol: msg.symbol,
+              mint: msg.mint,
+              is_pre_migration: true,
+              marketCap: msg.marketCapSol || 0,
+              liquidity: msg.vSolInBondingCurve || 0,
+              price,
+              processed: false,
+              firstSeen: Date.now()
+            };
+          }
+        } else if (msg.txType === 'migrate') {
+          if (preMigrationTokens.current[msg.mint]) {
+            preMigrationTokens.current[msg.mint].is_pre_migration = false;
+          }
         }
-      }
-
-      if (msg.txType === 'migrate') {
-        if (preMigrationTokens.current[msg.mint]) {
-          preMigrationTokens.current[msg.mint].is_pre_migration = false;
-          // Remove from tracked coins if it was being tracked
-          setTrackedCoins(prev => {
-            const newTracked = {...prev};
-            delete newTracked[msg.mint];
-            return newTracked;
-          });
-        }
+      } catch (e) {
+        console.warn('Error parsing pump portal message', e);
       }
     };
 
-    ws.current.onerror = (err) => console.error('WebSocket error:', err);
-    ws.current.onclose = () => console.log('PumpPortal WebSocket closed');
+    pumpWs.current.onerror = (err) => console.error('PumpPortal WebSocket error:', err);
+    pumpWs.current.onclose = () => console.log('PumpPortal WebSocket closed');
   };
 
+  const initHeliusWS = () => {
+    if (!heliusAPIKey) {
+      setErrorMessage("Please enter your Helius API key");
+      return;
+    }
+
+    if (heliusWs.current && heliusWs.current.readyState === WebSocket.OPEN) return;
+
+    const endpoint = `wss://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(
+      heliusAPIKey
+    )}`;
+    heliusWs.current = new WebSocket(endpoint);
+
+    heliusWs.current.onopen = () => {
+      console.log("Connected to Helius WebSocket");
+      reconnectBackoff.current = 1000;
+
+      const subscribeMsg = {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "programSubscribe",
+        params: [
+          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          { commitment: "confirmed", encoding: "jsonParsed" },
+        ],
+      };
+
+      try {
+        heliusWs.current.send(JSON.stringify(subscribeMsg));
+      } catch (e) {
+        console.warn("Helius subscribe error", e);
+      }
+
+      // keepalive pings
+      heliusWs.current._pingInterval = setInterval(() => {
+        try {
+          if (heliusWs.current.readyState === WebSocket.OPEN) {
+            heliusWs.current.send(
+              JSON.stringify({ jsonrpc: "2.0", method: "ping", id: Date.now() })
+            );
+          }
+        } catch (e) {
+          /* noop */
+        }
+      }, 45 * 1000);
+    };
+
+    heliusWs.current.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.method !== "programNotification") return;
+
+        const result = msg.params?.result?.value;
+        const info = result?.account?.data?.parsed?.info;
+        const pubkey = result?.pubkey;
+        if (!info || !pubkey) return;
+
+        const mint = info.mint;
+        const rawAmount =
+          info.tokenAmount?.uiAmountString ?? info.tokenAmount?.uiAmount ?? 0;
+        const tokenAmount = Number(rawAmount) || 0;
+
+        const knownTracked =
+          trackedCoinsRef.current[mint] || preMigrationTokens.current[mint];
+        if (!knownTracked) return;
+
+        const prevBalance = lastBalancesRef.current[pubkey] ?? tokenAmount;
+        const diff = tokenAmount - prevBalance;
+
+        lastBalancesRef.current[pubkey] = tokenAmount;
+        if (diff === 0) return;
+
+        const amount = Math.abs(diff);
+        const isBuy = diff > 0;
+        const isSell = diff < 0;
+        const now = Date.now();
+
+        // Only append event to history, timer will handle rolling-window updates
+        setTrackedCoins((prev) => {
+          const newTracked = { ...prev };
+          const prevMint =
+            newTracked[mint] ||
+            trackedCoinsRef.current[mint] ||
+            knownTracked ||
+            {};
+
+          const history = prevMint.history || [];
+          history.push({ ts: now, amount, isBuy, isSell });
+
+          newTracked[mint] = {
+            ...prevMint,
+            history,
+            lastUpdated: new Date(),
+            name: prevMint.name || knownTracked.name || "Unknown",
+            symbol: prevMint.symbol || knownTracked.symbol || "",
+          };
+
+          trackedCoinsRef.current = newTracked;
+          return newTracked;
+        });
+
+        console.debug("Helius WS event:", {
+          mint,
+          pubkey,
+          prevBalance,
+          newBalance: tokenAmount,
+          diff,
+        });
+      } catch (err) {
+        console.error("Failed to handle Helius message:", err);
+      }
+    };
+
+    heliusWs.current.onerror = (err) => {
+      console.error("Helius WS error", err);
+    };
+
+    heliusWs.current.onclose = () => {
+      console.log(
+        "Helius WebSocket closed, reconnecting in",
+        reconnectBackoff.current
+      );
+      if (heliusWs.current && heliusWs.current._pingInterval) {
+        clearInterval(heliusWs.current._pingInterval);
+      }
+      setTimeout(() => {
+        reconnectBackoff.current = Math.min(30000, reconnectBackoff.current * 2);
+        initHeliusWS();
+      }, reconnectBackoff.current);
+    };
+  };
+
+  // inside your App component or the WS init
+useEffect(() => {
+  const interval = setInterval(() => {
+    const now = Date.now();
+
+    setTrackedCoins(prev => {
+      const newTracked = { ...prev };
+
+      Object.keys(newTracked).forEach(mint => {
+        const prevMint = newTracked[mint];
+        if (!prevMint.history) return;
+
+        // prune to last 5m
+        const cutoff = now - 5 * 60 * 1000;
+        const filtered = prevMint.history.filter(e => e.ts >= cutoff);
+
+        const within = (ms) => filtered.filter(e => now - e.ts <= ms);
+
+        newTracked[mint] = {
+          ...prevMint,
+          history: filtered,
+
+          volume15s: within(15 * 1000).reduce((a, e) => a + e.amount, 0),
+          volume30s: within(30 * 1000).reduce((a, e) => a + e.amount, 0),
+          volume1m:  within(60 * 1000).reduce((a, e) => a + e.amount, 0),
+          volume5m:  within(300 * 1000).reduce((a, e) => a + e.amount, 0),
+
+          transactions15s: within(15 * 1000).length,
+          transactions30s: within(30 * 1000).length,
+          transactions1m:  within(60 * 1000).length,
+          transactions5m:  within(300 * 1000).length,
+
+          buys15s: within(15 * 1000).filter(e => e.isBuy).length,
+          buys30s: within(30 * 1000).filter(e => e.isBuy).length,
+          buys1m:  within(60 * 1000).filter(e => e.isBuy).length,
+          buys5m:  within(300 * 1000).filter(e => e.isBuy).length,
+
+          sells15s: within(15 * 1000).filter(e => e.isSell).length,
+          sells30s: within(30 * 1000).filter(e => e.isSell).length,
+          sells1m:  within(60 * 1000).filter(e => e.isSell).length,
+          sells5m:  within(300 * 1000).filter(e => e.isSell).length,
+
+          lastUpdated: new Date()
+        };
+      });
+
+      // recompute processed UI data
+      try {
+        const processed = processData(
+          Object.values(newTracked),
+          config.momentumThreshold,
+          config.velocityThreshold
+        );
+        const sorted = sortCoins(processed, sortField, sortDirection);
+        setCoinsData(sorted);
+        updateStats(sorted);
+        setLastUpdated(new Date().toLocaleTimeString());
+        setIsLoading(false);
+      } catch (err) {
+        console.error("Error during timer refresh:", err);
+      }
+
+      return newTracked;
+    });
+  }, 1000); // run every second
+
+  return () => clearInterval(interval);
+}, [config, sortField, sortDirection]);
+
+
+  // Apply settings handler
   const handleApplySettings = (settings) => {
     const newConfig = {
       ...config,
       minMarketCap: parseInt(settings.minMarketCap) || 0,
       maxMarketCap: parseInt(settings.maxMarketCap) || 100000,
       minLiquidity: parseInt(settings.minLiquidity) || 1000,
-      momentumThreshold: parseInt(settings.momentumThreshold) || 50,
+      momentumThreshold: parseInt(settings.momentumThreshold) || 2,
       velocityThreshold: parseFloat(settings.velocityThreshold) || 2,
-      refreshInterval: (parseInt(settings.refreshInterval) || 3) * 1000, // Changed to 3 seconds
-      maxCoinsToTrack: parseInt(settings.maxCoinsToTrack) || 20 // Added max coins
+      refreshInterval: (parseInt(settings.refreshInterval) || 3) * 1000,
+      maxCoinsToTrack: parseInt(settings.maxCoinsToTrack) || 20
     };
     setConfig(newConfig);
-    
+
     if (refreshIntervalId.current) {
       clearInterval(refreshIntervalId.current);
     }
-    startPeriodicUpdate();
   };
 
   const handleSort = (field) => {
@@ -213,313 +416,85 @@ function App() {
     }
   };
 
-  const startPeriodicUpdate = () => {
-    if (refreshIntervalId.current) {
-      clearInterval(refreshIntervalId.current);
-    }
-    
-    updateCoinsData();
-    
-    refreshIntervalId.current = setInterval(() => {
-      updateCoinsData();
-    }, config.refreshInterval);
-  };
-
-const updateCoinsData = async () => {
-  try {
-    if (!initialLoadRef.current) setIsLoading(true);
-
-    let updatedTrackedCoins = { ...trackedCoins };
-
-    const newCoins = Object.values(preMigrationTokens.current).filter(t => t.is_pre_migration);
-    let currentCount = Object.keys(updatedTrackedCoins).length;
-
-    for (const coin of newCoins) {
-      if (updatedTrackedCoins[coin.mint]) continue;
-      if (currentCount >= config.maxCoinsToTrack) break;
-      updatedTrackedCoins[coin.mint] = {
-        ...coin,
-        volume15s: 0, volume30s: 0, volume1m: 0, volume5m: 0,
-        transactions15s: 0, transactions30s: 0, transactions1m: 0, transactions5m: 0,
-        buys15s: 0, buys30s: 0, buys1m: 0, buys5m: 0,
-        sells15s: 0, sells30s: 0, sells1m: 0, sells5m: 0,
-        lastUpdated: new Date()
-      };
-      currentCount++;
-    }
-
-    const fetchedCoins = await fetchTradingData(Object.values(updatedTrackedCoins));
-
-    fetchedCoins.forEach(coin => {
-      if (updatedTrackedCoins[coin.mint]) {
-        updatedTrackedCoins[coin.mint] = {
-          ...updatedTrackedCoins[coin.mint],
-          ...coin,
-          lastUpdated: new Date()
-        };
-      }
-    });
-
-    Object.keys(updatedTrackedCoins).forEach(mint => {
-      const coin = updatedTrackedCoins[mint];
-      if (
-        typeof coin.prevLiquidity === 'number' &&
-        typeof coin.liquidity === 'number' &&
-        coin.prevLiquidity > 0
-      ) {
-        const diff = coin.liquidity - coin.prevLiquidity;
-        coin.liquidityChange = (diff / coin.prevLiquidity) * 100;
-      } else {
-        coin.liquidityChange = 0;
-      }
-      coin.prevLiquidity = coin.liquidity;
-    });
-
-    let trackedCoinsArray = Object.values(updatedTrackedCoins);
-    if (trackedCoinsArray.length > config.maxCoinsToTrack) {
-      const previousKeys = Object.keys(trackedCoins);
-      const keysSource = (previousKeys && previousKeys.length > 0)
-        ? previousKeys
-        : Object.keys(updatedTrackedCoins);
-      const keepMints = new Set(keysSource.slice(0, config.maxCoinsToTrack));
-
-      Object.keys(updatedTrackedCoins).forEach(mint => {
-        if (!keepMints.has(mint)) {
-          delete updatedTrackedCoins[mint];
-        }
-      });
-    }
-
-    const processedData = processData(
-      Object.values(updatedTrackedCoins),
-      config.momentumThreshold,
-      config.velocityThreshold
-    );
-    const sortedData = sortCoins(processedData, sortField, sortDirection);
-
-    console.debug('updatedTrackedCoins count:', Object.keys(updatedTrackedCoins).length);
-    console.debug('processedData count:', processedData.length);
-    console.debug('sortedData count:', sortedData.length);
-
-    const hasTrackedCoins = Object.keys(updatedTrackedCoins).length > 0;
-
-    if (!hasTrackedCoins) {
-      setTrackedCoins({});
-      setCoinsData([]);
-      updateStats([]);
-      setLastUpdated(new Date().toLocaleTimeString());
-      if (!initialLoadRef.current) {
-        setIsLoading(false);
-        initialLoadRef.current = true;
-      }
-    } else if (processedData.length === 0) {
-      setTrackedCoins(updatedTrackedCoins);
-      console.warn('Processed data empty — keeping previous coinsData until valid data returns.');
-    } else {
-      setTrackedCoins(updatedTrackedCoins);
-      setCoinsData(sortedData);
-      updateStats(sortedData);
-      setLastUpdated(new Date().toLocaleTimeString());
-
-      if (!initialLoadRef.current) {
-        setIsLoading(false);
-        initialLoadRef.current = true;
-      }
-    }
-
-    setErrorMessage('');
-  } catch (error) {
-    console.error('Error updating coins data:', error);
-    setErrorMessage('Failed to update coins data. Please check your API key and try again.');
-  }
-};
-
-
-const fetchTradingData = async (coins) => {
-  if (!heliusAPIKey) {
-    setErrorMessage('Please enter your Helius API key');
-    return coins;
-  }
-
-  const coinsWithDetails = [];
-  for (const coin of coins) {
-    const address = coin.mint;
-    try {
-      const url = `${config.heliusAPI}addresses/${address}/transactions?api-key=${heliusAPIKey}&limit=100`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        console.warn(`Helius response not OK for ${address}:`, response.status, response.statusText);
-        // push coin unchanged so UI still shows it
-        coinsWithDetails.push(coin);
-        continue;
-      }
-
-      const transactions = await response.json();
-      let txList = [];
-      if (Array.isArray(transactions)) {
-        txList = transactions;
-      } else if (transactions.value && Array.isArray(transactions.value)) {
-        txList = transactions.value;
-      } else if (transactions.results && Array.isArray(transactions.results)) {
-        txList = transactions.results;
-      } else {
-        console.warn('Unexpected tx response shape for', address);
-        txList = transactions;
-      }
-
-      const now = Date.now();
-      const oneMinAgo = now - 60 * 1000;
-      const fiveMinAgo = now - 5 * 60 * 1000;
-      const thirtySecAgo = now - 30 * 1000;
-      const fifteenSecAgo = now - 15 * 1000;
-
-      let volume15s = 0, volume30s = 0, volume1m = 0, volume5m = 0;
-      let tx15s = 0, tx30s = 0, tx1m = 0, tx5m = 0;
-      let buys15s = 0, buys30s = 0, buys1m = 0, buys5m = 0;
-      let sells15s = 0, sells30s = 0, sells1m = 0, sells5m = 0;
-
-      const sample = txList[0];
-      const hasFullTxData = sample && (sample.transaction || sample.meta || sample.blockTime || sample.parsed || sample.timestamp);
-
-      if (!hasFullTxData) {
-        console.warn(`Tx list for ${address} doesn't include parsed data. Volumes will be zero.`);
-      }
-
-      for (const tx of txList) {
-        let txTimestampSec = null;
-        if (tx.blockTime) txTimestampSec = tx.blockTime;
-        else if (tx.timestamp) txTimestampSec = tx.timestamp;
-        else if (tx.block && tx.block.time) txTimestampSec = tx.block.time;
-        if (!txTimestampSec) continue;
-
-        const txTime = new Date(txTimestampSec * 1000).getTime();
-        const isBuy = isBuyTransaction(tx, coin.mint);
-        let amount = getTransactionAmount(tx, coin.mint);
-
-        if (typeof amount !== 'number') {
-          amount = 0;
-        }
-
-        if (txTime >= fiveMinAgo) {
-          volume5m += amount; tx5m++; if (isBuy) buys5m++; else sells5m++;
-        }
-        if (txTime >= oneMinAgo) {
-          volume1m += amount; tx1m++; if (isBuy) buys1m++; else sells1m++;
-        }
-        if (txTime >= thirtySecAgo) {
-          volume30s += amount; tx30s++; if (isBuy) buys30s++; else sells30s++;
-        }
-        if (txTime >= fifteenSecAgo) {
-          volume15s += amount; tx15s++; if (isBuy) buys15s++; else sells15s++;
-        }
-      }
-
-      coinsWithDetails.push({
-        ...coin,
-        volume15s, transactions15s: tx15s, buys15s, sells15s,
-        volume30s, transactions30s: tx30s, buys30s, sells30s,
-        volume1m, transactions1m: tx1m, buys1m, sells1m,
-        volume5m, transactions5m: tx5m, buys5m, sells5m,
-        lastUpdated: new Date()
-      });
-    } catch (error) {
-      console.log(`Error processing data for ${coin.symbol}:`, error);
-      coinsWithDetails.push(coin);
-    }
-  }
-
-  return coinsWithDetails;
-};
-
-
   const sortCoins = (coins, field, direction) => {
     return [...coins].sort((a, b) => {
       let valueA = a[field];
       let valueB = b[field];
       if (field === 'buySellRatio') {
-        const [buysA, sellsA] = a.buySellRatio.split(':').map(Number);
-        const [buysB, sellsB] = b.buySellRatio.split(':').map(Number);
+        const [buysA, sellsA] = (a.buySellRatio || '0:1').split(':').map(Number);
+        const [buysB, sellsB] = (b.buySellRatio || '0:1').split(':').map(Number);
         const ratioA = sellsA > 0 ? buysA / sellsA : buysA;
         const ratioB = sellsB > 0 ? buysB / sellsB : buysB;
-        
         return direction === 'asc' ? ratioA - ratioB : ratioB - ratioA;
       }
-      
+
       if (typeof valueA === 'string') {
-        return direction === 'asc'
-          ? valueA.localeCompare(valueB)
-          : valueB.localeCompare(valueA);
+        return direction === 'asc' ? valueA.localeCompare(valueB) : valueB.localeCompare(valueA);
       }
-      
-      return direction === 'asc' ? valueA - valueB : valueB - valueA;
+
+      return direction === 'asc' ? (valueA || 0) - (valueB || 0) : (valueB || 0) - (valueA || 0);
     });
   };
 
   const updateStats = (coins) => {
-  const filteredCoins = coins.filter(coin => 
-    coin.marketCap >= config.minMarketCap && 
-    coin.marketCap <= config.maxMarketCap && 
-    coin.liquidity >= config.minLiquidity
-  );
+    const filteredCoins = coins.filter(coin =>
+      coin.marketCap >= config.minMarketCap &&
+      coin.marketCap <= config.maxMarketCap &&
+      coin.liquidity >= config.minLiquidity
+    );
 
-  const buySignals = filteredCoins.filter(coin => coin.signal === 'BUY').length;
-  const sellSignals = filteredCoins.filter(coin => coin.signal === 'SELL').length;
+    const buySignals = filteredCoins.filter(c => c.signal === 'BUY').length;
+    const sellSignals = filteredCoins.filter(c => c.signal === 'SELL').length;
 
-  let lastSignal = '-';
-  if (filteredCoins.length > 0) {
-    const latestCoin = filteredCoins.reduce((latest, coin) => {
-      const latestTime = new Date(latest.lastUpdated).getTime();
-      const coinTime = new Date(coin.lastUpdated).getTime();
-      return coinTime > latestTime ? coin : latest;
-    }, filteredCoins[0]);
-    lastSignal = `${latestCoin.name} (${latestCoin.signal})`;
-  }
+    let lastSignal = '-';
+    if (filteredCoins.length > 0) {
+      const latestCoin = filteredCoins.reduce((latest, coin) => {
+        const latestTime = new Date(latest.lastUpdated).getTime();
+        const coinTime = new Date(coin.lastUpdated).getTime();
+        return coinTime > latestTime ? coin : latest;
+      }, filteredCoins[0]);
+      lastSignal = `${latestCoin.name} (${latestCoin.signal})`;
+    }
 
-  setStats({
-    trackedCoins: filteredCoins.length,
-    greenSignals: buySignals,
-    redSignals: sellSignals,
-    lastSignal
-  });
-};
+    setStats({
+      trackedCoins: filteredCoins.length,
+      greenSignals: buySignals,
+      redSignals: sellSignals,
+      lastSignal
+    });
+  };
 
-
-    return (
+  return (
     <div className="container">
       <Header lastUpdated={lastUpdated} />
-      
-      {/* Add progress bar */}
+
       {isLoading && (
         <div className="progress-bar">
           <div className="progress-bar-inner"></div>
         </div>
       )}
-      
-      <Controls 
+
+      <Controls
         minMarketCap={config.minMarketCap}
         maxMarketCap={config.maxMarketCap}
         minLiquidity={config.minLiquidity}
         momentumThreshold={config.momentumThreshold}
         velocityThreshold={config.velocityThreshold}
         refreshInterval={config.refreshInterval / 1000}
-        maxCoinsToTrack={config.maxCoinsToTrack} // Added max coins
+        maxCoinsToTrack={config.maxCoinsToTrack}
         onApplySettings={handleApplySettings}
       />
-      
-      {errorMessage && (
-        <div id="error-message" className="error">
-          {errorMessage}
-        </div>
-      )}
-      
-      <Stats 
+
+      {errorMessage && <div id="error-message" className="error">{errorMessage}</div>}
+
+      <Stats
         trackedCoins={stats.trackedCoins}
         greenSignals={stats.greenSignals}
         redSignals={stats.redSignals}
         lastSignal={stats.lastSignal}
       />
-      
-      <CoinTable 
+
+      <CoinTable
         coinsData={coinsData}
         sortField={sortField}
         sortDirection={sortDirection}

@@ -146,24 +146,46 @@ useEffect(() => {
       try {
         const msg = JSON.parse(event.data);
         if (msg.txType === 'create') {
-          if (msg.name && msg.symbol && msg.mint) {
-            const price = msg.vSolInBondingCurve && msg.vTokensInBondingCurve
-              ? msg.vSolInBondingCurve / msg.vTokensInBondingCurve
-              : 0;
+  if (msg.name && msg.symbol && msg.mint) {
+    const price = msg.vSolInBondingCurve && msg.vTokensInBondingCurve
+      ? msg.vSolInBondingCurve / msg.vTokensInBondingCurve
+      : 0;
 
-            preMigrationTokens.current[msg.mint] = {
-              name: msg.name,
-              symbol: msg.symbol,
-              mint: msg.mint,
-              is_pre_migration: true,
-              marketCap: msg.marketCapSol || 0,
-              liquidity: msg.vSolInBondingCurve || 0,
-              price,
-              processed: false,
-              firstSeen: Date.now()
-            };
-          }
-        } else if (msg.txType === 'migrate') {
+    const tokenData = {
+      name: msg.name,
+      symbol: msg.symbol,
+      mint: msg.mint,
+      is_pre_migration: true,
+      marketCap: msg.marketCapSol || 0,
+      liquidity: msg.vSolInBondingCurve || 0,
+      price,
+      processed: false,
+      firstSeen: Date.now(),
+    };
+
+    preMigrationTokens.current[msg.mint] = tokenData;
+
+    setTrackedCoins(prev => {
+      let newTracked = { ...prev };
+
+      if (Object.keys(newTracked).length >= config.maxCoinsToTrack) {
+        const oldestMint = Object.entries(newTracked)
+          .sort((a, b) => (a[1].addedAt || 0) - (b[1].addedAt || 0))[0][0];
+        delete newTracked[oldestMint];
+      }
+
+      newTracked[msg.mint] = {
+        ...tokenData,
+        addedAt: Date.now(),
+        lastUpdated: Date.now(),
+        history: [],
+      };
+
+      return newTracked;
+    });
+  }
+}
+ else if (msg.txType === 'migrate') {
           if (preMigrationTokens.current[msg.mint]) {
             preMigrationTokens.current[msg.mint].is_pre_migration = false;
           }
@@ -254,28 +276,43 @@ useEffect(() => {
         const isSell = diff < 0;
         const now = Date.now();
 
-        setTrackedCoins((prev) => {
-          const newTracked = { ...prev };
-          const prevMint =
-            newTracked[mint] ||
-            trackedCoinsRef.current[mint] ||
-            knownTracked ||
-            {};
+        setTrackedCoins(prev => {
+  let newTracked = { ...prev };
+  const prevMint =
+    newTracked[mint] ||
+    trackedCoinsRef.current[mint] ||
+    knownTracked ||
+    {};
 
-          const history = prevMint.history || [];
-          history.push({ ts: now, amount, isBuy, isSell });
+  const history = prevMint.history || [];
+  history.push({ ts: now, amount, isBuy, isSell });
+
+        if (newTracked[mint]) {
+          newTracked[mint] = {
+            ...newTracked[mint],
+            history,
+            lastUpdated: Date.now(),
+          };
+        } else {
+          if (Object.keys(newTracked).length >= config.maxCoinsToTrack) {
+            const oldestMint = Object.entries(newTracked)
+              .sort((a, b) => (a[1].addedAt || 0) - (b[1].addedAt || 0))[0][0];
+            delete newTracked[oldestMint];
+          }
 
           newTracked[mint] = {
             ...prevMint,
             history,
-            lastUpdated: new Date(),
             name: prevMint.name || knownTracked.name || "Unknown",
             symbol: prevMint.symbol || knownTracked.symbol || "",
+            addedAt: Date.now(),
+            lastUpdated: Date.now(),
           };
+        }
 
-          trackedCoinsRef.current = newTracked;
-          return newTracked;
-        });
+        trackedCoinsRef.current = newTracked;
+        return newTracked;
+      });
 
         console.debug("Helius WS event:", {
           mint,

@@ -1,4 +1,3 @@
-// App.js — updated
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import Controls from './components/Controls';
@@ -15,8 +14,8 @@ function App() {
     minLiquidity: 1,
     momentumThreshold: 2,
     velocityThreshold: 2,
-    refreshInterval: 3000, // milliseconds
-    heliusAPI: 'https://api.helius.xyz/v0/',
+    refreshInterval: 3000,
+    heliusAPI: '',
     maxCoinsToTrack: 20
   });
 
@@ -39,16 +38,12 @@ function App() {
   });
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-
-  // refs
-  const preMigrationTokens = useRef({}); // { mint: { ... , firstSeen } }
+  const preMigrationTokens = useRef({});
   const pumpWs = useRef(null);
   const heliusWs = useRef(null);
   const refreshIntervalId = useRef(null);
-  const initialLoadRef = useRef(false);
   const reconnectBackoff = useRef(1000);
 
-  // Try to load a key from env if available
   useEffect(() => {
     const savedKey = process.env.REACT_APP_HELIUS_API_KEY;
     if (savedKey) {
@@ -85,7 +80,6 @@ useEffect(() => {
         mint: coin.mint
       };
 
-      // record the alert timestamp
       lastAlertRef.current[coin.mint] = {
         ...lastForMint,
         [coin.signal]: now
@@ -124,16 +118,13 @@ useEffect(() => {
     </div>
   );
 
-  // Start pump portal WS + helius WS when API key is loaded
   useEffect(() => {
     if (isAPIKeyLoaded) {
       initPumpPortalWS();
       initHeliusWS();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAPIKeyLoaded, config.maxCoinsToTrack]);
 
-  // PumpPortal WS: receives create/migrate events and stores tokens with firstSeen timestamp
   const initPumpPortalWS = () => {
     if (pumpWs.current && pumpWs.current.readyState === WebSocket.OPEN) return;
 
@@ -263,7 +254,6 @@ useEffect(() => {
         const isSell = diff < 0;
         const now = Date.now();
 
-        // Only append event to history, timer will handle rolling-window updates
         setTrackedCoins((prev) => {
           const newTracked = { ...prev };
           const prevMint =

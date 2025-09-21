@@ -13,7 +13,6 @@ export const getTransactionAmount = (tx, mint) => {
 
 export function calculateMomentum(volume15s, volume5m) {
   if (!volume15s || !volume5m) return 0;
-  console.log("volume 15s ", volume15s, "volume 5m", volume5m)
   const ratio = (volume15s * 20) / volume5m;
   const momentum = Math.log10(1 + ratio) * 5;
   return Number(momentum.toFixed(2));
@@ -22,8 +21,6 @@ export function calculateMomentum(volume15s, volume5m) {
 export const processData = (coinsData, momentumThreshold = 2, velocityThreshold = 0) => {
   return coinsData.map(coin => {
     const momentum = calculateMomentum(coin.volume15s || 0, coin.volume5m || 0);
-
-    console.log("Calculated momentum ", momentum, momentumThreshold)
 
     const velocity = coin.transactions1m || 0;
     const avgTransactions15s = (coin.transactions5m || 0) / 300;

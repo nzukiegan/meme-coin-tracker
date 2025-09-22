@@ -11,10 +11,18 @@ export const getTransactionAmount = (tx, mint) => {
   return Number(transfer.tokenAmount || 0);
 };
 
-export function calculateMomentum(volume15s, volume5m) {
-  if (!volume15s || !volume5m) return 0;
-  const ratio = (volume15s * 20) / volume5m;
-  const momentum = Math.log10(1 + ratio) * 5;
+export function calculateMomentum(buy15s, sell15s, buy5m, sell5m) {
+  const vol15s = buy15s + sell15s;
+  const vol5m = buy5m + sell5m;
+
+  if (vol15s === 0 || vol5m === 0) return 0;
+
+  const bias = (buy15s - sell15s) / vol15s;
+
+  const ratio = (vol15s * 20) / vol5m;
+
+  const momentum = Math.log10(1 + ratio) * 5 * bias;
+
   return Number(momentum.toFixed(2));
 }
 

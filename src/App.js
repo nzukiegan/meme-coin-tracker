@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import Controls from './components/Controls';
 import Stats from './components/Stats';
+import TrackToken from "./components/TrackToken";
 import CoinTable from './components/CoinTable';
 import { isBuyTransaction, getTransactionAmount, processData } from './utils/helpers';
 import './App.css';
@@ -43,6 +44,34 @@ function App() {
   const heliusWs = useRef(null);
   const refreshIntervalId = useRef(null);
   const reconnectBackoff = useRef(1000);
+  const removeOldestNonPinned = (trackedObj, maxCoins) => {
+  const entries = Object.entries(trackedObj);
+  
+  if (entries.length <= maxCoins) return trackedObj;
+  
+  const pinned = entries.filter(([_, data]) => data.isPinned);
+  const nonPinned = entries.filter(([_, data]) => !data.isPinned);
+  
+  if (nonPinned.length === 0) return trackedObj;
+  
+  nonPinned.sort((a, b) => (a[1].addedAt || 0) - (b[1].addedAt || 0));
+  
+  const newTracked = {};
+  
+  pinned.forEach(([mint, data]) => {
+    newTracked[mint] = data;
+  });
+  
+  const nonPinnedToKeep = nonPinned
+    .reverse()
+    .slice(0, maxCoins - pinned.length);
+  
+  nonPinnedToKeep.forEach(([mint, data]) => {
+    newTracked[mint] = data;
+  });
+  
+  return newTracked;
+};
 
   useEffect(() => {
     const savedKey = process.env.REACT_APP_HELIUS_API_KEY;
@@ -226,15 +255,10 @@ const handleTrackToken = (mint) => {
       let newTracked = { ...prev };
       const prevToken = newTracked[msg.mint] || {};
 
+      newTracked = removeOldestNonPinned(newTracked, config.maxCoinsToTrack);
+      
       if (Object.keys(newTracked).length >= config.maxCoinsToTrack) {
-        const removable = Object.entries(newTracked)
-          .filter(([_, data]) => !data.isPinned)
-          .sort((a, b) => (a[1].addedAt || 0) - (b[1].addedAt || 0));
-
-        if (removable.length > 0) {
-          const oldestMint = removable[0][0];
-          delete newTracked[oldestMint];
-        }
+        return prev;
       }
 
       newTracked[msg.mint] = {
@@ -311,7 +335,7 @@ const handleTrackToken = (mint) => {
       }, 45 * 1000);
     };
 
-    heliusWs.current.onmessage = (evt) => {
+        heliusWs.current.onmessage = (evt) => {
       try {
         const msg = JSON.parse(evt.data);
         if (msg.method !== "programNotification") return;
@@ -342,42 +366,52 @@ const handleTrackToken = (mint) => {
         const now = Date.now();
 
         setTrackedCoins(prev => {
-          let newTracked = { ...prev };
+          const newTracked = { ...prev };
           const prevMint =
             newTracked[mint] ||
             trackedCoinsRef.current[mint] ||
             knownTracked ||
             {};
 
-          const history = prevMint.history || [];
+          // copy existing history (if any) and append new event
+          const history = Array.isArray(prevMint.history) ? [...prevMint.history] : [];
           history.push({ ts: now, amount, isBuy, isSell });
 
           if (newTracked[mint]) {
+            // update an existing tracked entry
             newTracked[mint] = {
               ...newTracked[mint],
               history,
               lastUpdated: Date.now(),
             };
           } else {
+            // need to add a new tracked entry. Ensure we don't evict pinned tokens.
             if (Object.keys(newTracked).length >= config.maxCoinsToTrack) {
-              const removable = Object.entries(newTracked)
+              // build list of non-pinned candidates sorted by addedAt asc
+              let removable = Object.entries(newTracked)
                 .filter(([_, data]) => !data.isPinned)
                 .sort((a, b) => (a[1].addedAt || 0) - (b[1].addedAt || 0));
 
-              if (removable.length > 0) {
-                const oldestMint = removable[0][0];
+              // remove oldest non-pinned items until there is room OR none remain
+              while (Object.keys(newTracked).length >= config.maxCoinsToTrack && removable.length > 0) {
+                const oldestMint = removable.shift()[0];
                 delete newTracked[oldestMint];
-              } else {
+              }
+
+              // If still full, all remaining are pinned — do not add the new token
+              if (Object.keys(newTracked).length >= config.maxCoinsToTrack) {
                 return prev;
               }
             }
 
+            // safe to add the new tracked token
             newTracked[mint] = {
               ...prevMint,
               history,
               name: prevMint.name || knownTracked.name || "Unknown",
               symbol: prevMint.symbol || knownTracked.symbol || "",
               isPinned: prevMint.isPinned || false,
+              isTracked: prevMint.isTracked || false,
               addedAt: Date.now(),
               lastUpdated: Date.now(),
             };
@@ -398,6 +432,7 @@ const handleTrackToken = (mint) => {
         console.error("Failed to handle Helius message:", err);
       }
     };
+
 
     heliusWs.current.onerror = (err) => {
       console.error("Helius WS error", err);
@@ -464,7 +499,6 @@ useEffect(() => {
         };
       });
 
-      // recompute processed UI data
       try {
         const processed = processData(
           Object.values(newTracked),
@@ -584,6 +618,8 @@ useEffect(() => {
         onApplySettings={handleApplySettings}
         onTrackToken={handleTrackToken}
       />
+
+      <TrackToken onTrackToken={handleTrackToken} />
 
       {errorMessage && <div id="error-message" className="error">{errorMessage}</div>}
 

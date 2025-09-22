@@ -106,20 +106,6 @@ const Controls = ({
           onChange={handleChange}
         />
       </div>
-
-      {/* Track Token */}
-      <div className="control-group">
-        <input 
-          type="text"
-          placeholder="Track a token"
-          value={trackInput}
-          onChange={(e) => setTrackInput(e.target.value)}
-        />
-      </div>
-      <div>
-        <button onClick={handleTrack}
-        className="plus-button">＋</button>
-      </div>
       <div className="control-group" style={{justifyContent: 'flex-end'}}>
         <button onClick={handleApply}>Apply Settings</button>
       </div>

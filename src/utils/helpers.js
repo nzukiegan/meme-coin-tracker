@@ -28,7 +28,7 @@ export function calculateMomentum(buy15s, sell15s, buy5m, sell5m) {
 
 export const processData = (coinsData, momentumThreshold = 2, velocityThreshold = 0) => {
   return coinsData.map(coin => {
-    const momentum = calculateMomentum(coin.volume15s || 0, coin.volume5m || 0);
+    const momentum = calculateMomentum(coin.buys15s, coin.sells15s, coin.buys5m, coin.sells5m);
 
     const velocity = coin.transactions1m || 0;
     const avgTransactions15s = (coin.transactions5m || 0) / 300;

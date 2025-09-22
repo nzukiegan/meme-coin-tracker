@@ -1,6 +1,14 @@
 import React from 'react';
+import { Copy, Pin, PinOff} from "lucide-react";
 
-const CoinTable = ({ coinsData, sortField, sortDirection, onSort }) => {
+const CoinTable = ({ 
+  coinsData, 
+  sortField, 
+  sortDirection, 
+  onSort, 
+  onCopyAddress, 
+  onTogglePin 
+}) => {
   const handleSort = (field) => {
     onSort(field);
   };
@@ -12,7 +20,6 @@ const CoinTable = ({ coinsData, sortField, sortDirection, onSort }) => {
     return '';
   };
 
-  // Function to render volume momentum bars with different colors
   const renderVolumeBars = (momentum) => {
     const ratio = momentum;
     const barCount = Math.min(5, Math.max(0, Math.floor(ratio)));
@@ -41,10 +48,6 @@ const CoinTable = ({ coinsData, sortField, sortDirection, onSort }) => {
     );
   };
 
-
-
-
-  // Function to render buy/sell ratio bars
   const renderBuySellBars = (buys, sells) => {
     const total = buys + sells;
     const buyPercentage = total > 0 ? (buys / total) * 100 : 0;
@@ -58,7 +61,6 @@ const CoinTable = ({ coinsData, sortField, sortDirection, onSort }) => {
     );
   };
 
-  // Function to render liquidity change indicator
   const renderLiquidityChange = (change) => {
     const isPositive = change >= 0;
     const barWidth = Math.min(100, Math.abs(change));
@@ -96,14 +98,13 @@ const CoinTable = ({ coinsData, sortField, sortDirection, onSort }) => {
     );
   };
 
-
   if (coinsData.length === 0) {
     return (
       <div>
         <table id="coins-table">
           <tbody>
             <tr>
-              <td colSpan="7" className="loading">
+              <td colSpan="9" className="loading">
                 <div className="spinner-container" role="status" aria-live="polite" aria-label="Loading coins">
                   <div className="spinner" />
                   <div className="loading-text">Loading coins…</div>
@@ -121,33 +122,44 @@ const CoinTable = ({ coinsData, sortField, sortDirection, onSort }) => {
       <table id="coins-table">
         <thead>
           <tr>
-            <th onClick={() => handleSort('name')}>
-              Token Name {getSortIndicator('name')}
-            </th>
-            <th onClick={() => handleSort('volume15s')}>
-              Volume {getSortIndicator('volume15s')}
-            </th>
-            <th onClick={() => handleSort('momentum')}>
-              Momentum {getSortIndicator('momentum')}
-            </th>
-            <th onClick={() => handleSort('buySellRatio')}>
-              Buy/Sell Ratio {getSortIndicator('buySellRatio')}
-            </th>
-            <th onClick={() => handleSort('liquidity')}>
-              Liquidity {getSortIndicator('liquidity')}
-            </th>
-            <th onClick={() => handleSort('liquidityChange')}>
-              Change {getSortIndicator('liquidityChange')}
-            </th>
-            <th onClick={() => handleSort('signal')}>
-              Status {getSortIndicator('signal')}
-            </th>
+            <th onClick={() => handleSort('name')}>Token {getSortIndicator('name')}</th>
+            <th>Actions</th>
+            <th onClick={() => handleSort('volume15s')}>Volume {getSortIndicator('volume15s')}</th>
+            <th onClick={() => handleSort('momentum')}>Momentum {getSortIndicator('momentum')}</th>
+            <th onClick={() => handleSort('buySellRatio')}>Buy/Sell {getSortIndicator('buySellRatio')}</th>
+            <th onClick={() => handleSort('liquidity')}>Liquidity {getSortIndicator('liquidity')}</th>
+            <th onClick={() => handleSort('liquidityChange')}>Change {getSortIndicator('liquidityChange')}</th>
+            <th onClick={() => handleSort('signal')}>Status {getSortIndicator('signal')}</th>
           </tr>
         </thead>
         <tbody>
-          {coinsData.map(coin => (
+          {coinsData
+              .sort((a, b) => {
+                if (a.isPinned && !b.isPinned) return -1;
+                if (!a.isPinned && b.isPinned) return 1;
+                return 0; // keep original order otherwise
+              }).map(coin => (
             <tr key={coin.mint} className={coin.signal.toLowerCase()}>
-              <td>{coin.name} ({coin.symbol})</td>
+              <td>
+                {coin.name} ({coin.symbol}) 
+                {coin.isPinned && <span className="pinned-label">📌 Pinned</span>}
+                {coin.isTracked && <span className="tracked-label">🔍 Tracked</span>}
+              </td>
+              <td>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <button
+                    onClick={() => onCopyAddress(coin.mint)}
+                    title="Copy Address"
+                    style={{ display: "flex", alignItems: "center" }}
+                  >
+                    <Copy size={16} />
+                  </button>
+
+                  <button onClick={() => onTogglePin(coin.mint)} title={coin.isPinned ? "Unpin" : "Pin"}>
+                    {coin.isPinned ? <PinOff size={16} /> : <Pin size={16} />}
+                  </button>
+                </div>
+              </td>
               <td>{renderVolumeBars(coin.momentum)}</td>
               <td>{(coin.momentum ?? 0).toFixed(2)}x</td>
               <td>{renderBuySellBars(coin.buys5m, coin.sells5m)}</td>

@@ -8,7 +8,8 @@ const Controls = ({
   velocityThreshold, 
   refreshInterval,
   maxCoinsToTrack,
-  onApplySettings 
+  onApplySettings,
+  onTrackToken
 }) => {
   const [settings, setSettings] = useState({
     minMarketCap: minMarketCap || 0,
@@ -19,6 +20,8 @@ const Controls = ({
     refreshInterval: refreshInterval || 3,
     maxCoinsToTrack: maxCoinsToTrack || 50
   });
+
+  const [trackInput, setTrackInput] = useState('');
 
   const handleChange = (e) => {
     const { id, value } = e.target;
@@ -32,8 +35,16 @@ const Controls = ({
     onApplySettings(settings);
   };
 
+  const handleTrack = () => {
+    if (trackInput.trim()) {
+      onTrackToken(trackInput.trim());
+      setTrackInput('');
+    }
+  };
+
   return (
     <div className="controls">
+      {/* Settings */}
       <div className="control-group">
         <label htmlFor="min-market-cap">Min Market Cap ($)</label>
         <input 
@@ -44,7 +55,6 @@ const Controls = ({
           onChange={handleChange}
         />
       </div>
-      
       <div className="control-group">
         <label htmlFor="max-market-cap">Max Market Cap ($)</label>
         <input 
@@ -55,7 +65,6 @@ const Controls = ({
           onChange={handleChange}
         />
       </div>
-      
       <div className="control-group">
         <label htmlFor="min-liquidity">Min Liquidity ($)</label>
         <input 
@@ -66,7 +75,6 @@ const Controls = ({
           onChange={handleChange}
         />
       </div>
-      
       <div className="control-group">
         <label htmlFor="momentum-threshold">Momentum Threshold</label>
         <input 
@@ -77,7 +85,6 @@ const Controls = ({
           onChange={handleChange}
         />
       </div>
-      
       <div className="control-group">
         <label htmlFor="velocity-threshold">Velocity Spike Factor</label>
         <input 
@@ -89,8 +96,6 @@ const Controls = ({
           onChange={handleChange}
         />
       </div>
-      
-      {/* Added max coins to track field */}
       <div className="control-group">
         <label htmlFor="max-coins-to-track">Max Coins to Track</label>
         <input 
@@ -101,7 +106,20 @@ const Controls = ({
           onChange={handleChange}
         />
       </div>
-      
+
+      {/* Track Token */}
+      <div className="control-group">
+        <input 
+          type="text"
+          placeholder="Track a token"
+          value={trackInput}
+          onChange={(e) => setTrackInput(e.target.value)}
+        />
+      </div>
+      <div>
+        <button onClick={handleTrack}
+        className="plus-button">＋</button>
+      </div>
       <div className="control-group" style={{justifyContent: 'flex-end'}}>
         <button onClick={handleApply}>Apply Settings</button>
       </div>

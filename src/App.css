@@ -1,508 +1,435 @@
-/* Copy all the CSS from your original HTML file here */
-:root {
-  --green: #4caf50;
-  --light-green: #e8f5e9;
-  --red: #f44336;
-  --light-red: #ffebee;
-  --yellow: #ffc107;
-  --light-yellow: #fff8e1;
-  --gray: #f5f5f5;
-  --dark-gray: #333;
+:root{
+  --bg: #f4f7fb;
+  --card: #ffffff;
+  --muted: #7a869a;
+  --text: #0f1724;
+  --accent: #2563eb;
+  --accent-2: #06b6d4;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --glass: rgba(255,255,255,0.6);
+  --shadow-1: 0 6px 18px rgba(15,23,36,0.06);
+  --shadow-2: 0 2px 6px rgba(15,23,36,0.04);
+  --radius: 12px;
+  --soft-radius: 8px;
+  --max-width: 1400px;
+  --gap: 18px;
+  --ui-font: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
+* { box-sizing: border-box; }
+html,body,#root { height: 100%; }
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   margin: 0;
   padding: 0;
-  background-color: #f9f9f9;
-  color: #333;
+  font-family: var(--ui-font);
+  background: linear-gradient(180deg, #f6f9fc 0%, var(--bg) 100%);
+  color: var(--text);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  line-height: 1.4;
+  font-size: 14px;
 }
 
+.plus-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+
+/* --- Layout container --- */
 .container {
-  max-width: 1600px;
-  margin: 0 auto;
+  max-width: var(--max-width);
+  margin: 24px auto;
   padding: 20px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--gap);
 }
 
+/* --- Header --- */
 header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #ddd;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  background: linear-gradient(90deg, rgba(37,99,235,0.07), rgba(6,182,212,0.04));
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
 }
 
-h1 {
+header h1 {
+  font-size: 1.3rem;
   margin: 0;
-  color: #333;
+  color: #0b1220;
+  letter-spacing: -0.2px;
 }
 
+#last-updated {
+  font-size: 0.9rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* --- Controls panel --- */
 .controls {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  background: white;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  background: var(--card);
+  border-radius: var(--soft-radius);
+  box-shadow: var(--shadow-2);
+  align-items: end;
 }
 
+/* Each control group */
 .control-group {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
 }
 
-label {
-  font-size: 0.9rem;
+.control-group label {
+  font-size: 0.85rem;
+  color: var(--muted);
   font-weight: 600;
 }
 
-input, select {
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-button {
-  background-color: #4285f4;
-  color: white;
-  border: none;
-  padding: 8px 15px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-button:hover {
-  background-color: #3367d6;
-}
-
-.api-key-section {
-  background: #fff3cd;
-  padding: 15px;
+input[type="text"],
+input[type="number"],
+select {
+  height: 40px;
+  padding: 8px 12px;
   border-radius: 8px;
-  margin-bottom: 20px;
-  border-left: 4px solid #ffc107;
+  border: 1px solid #e6eef8;
+  background: linear-gradient(180deg,#fff,#fbfdff);
+  outline: none;
+  color: var(--text);
+  transition: box-shadow .18s ease, border-color .12s ease;
+  font-size: 0.95rem;
 }
 
-.api-key-section h3 {
-  margin-top: 0;
+input[type="text"]::placeholder { color: #aab6c7; }
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus {
+  box-shadow: 0 6px 20px rgba(37,99,235,0.08);
+  border-color: var(--accent);
 }
 
+/* Track token inline row */
+.control-group > .track-row {
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+
+.control-group .track-row input {
+  flex: 1;
+}
+
+/* Buttons */
+button {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  background: var(--accent);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform .06s ease, box-shadow .12s ease, opacity .12s ease;
+  box-shadow: 0 6px 16px rgba(37,99,235,0.12);
+}
+
+button:hover { transform: translateY(-1px); }
+button:active { transform: translateY(0); }
+button.secondary {
+  background: #eef6ff;
+  color: var(--accent);
+  box-shadow: none;
+  border: 1px solid #e3f0ff;
+}
+
+/* --- API key / info section --- */
+.api-key-section {
+  padding: 12px;
+  background: linear-gradient(180deg,#fff9ec,#fffef7);
+  border-left: 4px solid var(--warning);
+  border-radius: 10px;
+  color: #5a4d00;
+}
+
+/* --- Stats cards --- */
 .stats {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px,1fr));
+  gap: 12px;
 }
 
 .stat-card {
-  background: white;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  flex: 1;
-  min-width: 200px;
+  background: var(--card);
+  padding: 14px;
+  border-radius: var(--soft-radius);
+  box-shadow: var(--shadow-2);
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  align-items:start;
 }
 
 .stat-card h3 {
-  margin: 0 0 10px 0;
-  font-size: 1rem;
-  color: #666;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .stat-value {
-  font-size: 1.5rem;
-  font-weight: bold;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #091124;
 }
 
-table {
+/* --- Table --- */
+#coins-table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
+  background: transparent;
+  box-shadow: var(--shadow-1);
 }
 
-th, td {
-  padding: 12px 15px;
-  text-align: left;
-  border-bottom: 1px solid #eee;
-}
-
-th {
-  background-color: #f5f5f5;
-  font-weight: 600;
+#coins-table thead th {
+  background: linear-gradient(180deg,#fbfdff,#f4f7fb);
+  padding: 14px 16px;
+  text-align:left;
+  font-weight:700;
+  color:#102030;
+  font-size:0.92rem;
+  border-bottom: 1px solid #eef3f9;
   cursor: pointer;
+  user-select: none;
 }
 
-th:hover {
-  background-color: #eee;
+#coins-table tbody td {
+  background: var(--card);
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(13,22,33,0.03);
+  vertical-align: middle;
+  font-size: 0.92rem;
+  color: #0f1724;
 }
 
-tr:hover {
-  background-color: #f9f9f9;
+/* row hover */
+#coins-table tbody tr:hover td {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(2,6,23,0.03);
 }
 
-.signal-green {
-  background-color: var(--light-green);
+/* small responsive tweaks for table text */
+#coins-table td small {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
-.signal-red {
-  background-color: var(--light-red);
+/* status row colors */
+#coins-table tr.buy td { background: linear-gradient(90deg, rgba(16,185,129,0.04), var(--card)); }
+#coins-table tr.sell td { background: linear-gradient(90deg, rgba(239,68,68,0.04), var(--card)); }
+
+/* --- Actions cell --- */
+#coins-table td button {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  border-radius: 8px;
+  box-shadow: none;
 }
 
-.signal-yellow {
-  background-color: var(--light-yellow);
+#coins-table td button.copy {
+  background: #eef6f4;
+  color: var(--success);
+  border: 1px solid rgba(16,185,129,0.08);
 }
 
-.signal-indicator {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  margin-right: 5px;
+#coins-table td button.pin {
+  background: #eef2ff;
+  color: var(--accent);
+  border: 1px solid rgba(37,99,235,0.06);
 }
 
-.signal-indicator.green {
-  background-color: var(--green);
-}
-
-.signal-indicator.red {
-  background-color: var(--red);
-}
-
-.signal-indicator.yellow {
-  background-color: var(--yellow);
-}
-
-.positive {
-  color: var(--green);
-  font-weight: bold;
-}
-
-.negative {
-  color: var(--red);
-  font-weight: bold;
-}
-
-.sparkline {
-  display: inline-block;
-  width: 60px;
-  height: 20px;
-}
-
-.loading {
-  text-align: center;
-  padding: 20px;
-  color: #666;
-}
-
-.error {
-  color: var(--red);
-  padding: 10px;
-  background-color: var(--light-red);
-  border-radius: 4px;
-  margin-bottom: 15px;
-}
-
-@media (max-width: 768px) {
-  .controls, .stats {
-    flex-direction: column;
-  }
-  
-  th, td {
-    padding: 8px 10px;
-    font-size: 0.9rem;
-  }
-}
-
-/* Volume bars */
+/* --- Volume bars --- */
 .volume-bars {
   display: flex;
-  align-items: center;
-  gap: 2px;
+  align-items:center;
+  gap:8px;
 }
 
 .volume-bar {
-  height: 10px;
-  background-color: #e0e0e0;
-  border-radius: 2px;
-  transition: all 0.3s ease;
+  height: 8px;
+  width: 16px;
+  border-radius: 4px;
+  background: #e9eef6;
+  transition: transform .18s linear, background-color .18s linear;
+  box-shadow: inset 0 -2px 6px rgba(0,0,0,0.03);
 }
 
-.volume-bar.active {
-  background-color: #4caf50;
-}
+.volume-bar.active { background: var(--accent); transform: scaleY(1.05); }
 
 .volume-ratio {
-  margin-left: 8px;
-  font-size: 0.8em;
-  color: #666;
+  font-size: 0.82rem;
+  color: var(--muted);
+  min-width: 56px;
 }
 
-/* Buy/Sell bars */
+/* --- Buy/Sell bars --- */
 .buy-sell-bars {
-  height: 20px;
-  display: flex;
-  position: relative;
-  border-radius: 4px;
-  overflow: hidden;
+  display:flex;
+  align-items:center;
+  height:14px;
+  width:140px;
+  background:#f3f7fb;
+  border-radius: 8px;
+  overflow:hidden;
+  position:relative;
 }
 
-.buy-bar {
-  height: 100%;
-  background-color: #4caf50;
-  transition: width 0.3s ease;
-}
-
-.sell-bar {
-  height: 100%;
-  background-color: #f44336;
-  transition: width 0.3s ease;
-}
+.buy-bar { background: linear-gradient(90deg,var(--success), #06d6a0); height:100%; transition: width .22s ease; }
+.sell-bar { background: linear-gradient(90deg,var(--danger), #ff7a7a); height:100%; transition: width .22s ease; }
 
 .ratio-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: white;
-  font-weight: bold;
-  font-size: 0.8em;
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+  position:absolute;
+  right:8px;
+  font-size:0.78rem;
+  color: #fff;
+  font-weight:700;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.25);
 }
 
-/* Liquidity change */
+/* --- Liquidity change --- */
 .liquidity-change {
-  height: 20px;
-  position: relative;
-  border-radius: 4px;
-  overflow: hidden;
-  background-color: #f5f5f5;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:120px;
 }
 
 .liquidity-bar {
-  height: 100%;
-  transition: width 0.3s ease;
+  height:10px;
+  width:80px;
+  border-radius:6px;
+  background:#eef3f8;
+  position:relative;
+  overflow:hidden;
 }
 
-.liquidity-bar.positive {
-  background-color: #4caf50;
-}
-
-.liquidity-bar.negative {
-  background-color: #f44336;
-}
+.liquidity-bar.positive { background: linear-gradient(90deg, rgba(16,185,129,0.12), rgba(16,185,129,0.06)); }
+.liquidity-bar.negative { background: linear-gradient(90deg, rgba(239,68,68,0.10), rgba(239,68,68,0.04)); }
 
 .change-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-weight: bold;
-  font-size: 0.8em;
+  font-size:0.85rem;
+  color: var(--muted);
+  min-width:48px;
 }
 
-/* Status indicators */
-.status {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-weight: bold;
+/* --- Status --- */
+.status { display:flex; align-items:center; gap:8px; font-weight:700; }
+.status.buy { color:var(--success); }
+.status.sell { color:var(--danger); }
+.status.hold { color:var(--warning); }
+
+/* Pinned / Tracked labels */
+.pinned-label, .tracked-label {
+  display:inline-block;
+  margin-left:8px;
+  font-weight:700;
+  font-size:0.78rem;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(14,165,233,0.06);
+  color: #0369a1;
 }
 
-.status.buy {
-  color: #4caf50;
-}
-
-.status.hold {
-  color: #ff9800;
-}
-
-.status.sell {
-  color: #f44336;
-}
-
-.status-icon {
-  font-size: 1.2em;
-}
-
-/* Legend */
-.legend {
-  margin-top: 20px;
-  padding: 15px;
-  background-color: #f5f5f5;
-  border-radius: 8px;
-}
-
-.legend h3 {
-  margin-top: 0;
-  margin-bottom: 15px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
-  gap: 10px;
-}
-
-.legend-label {
-  font-weight: bold;
-  min-width: 120px;
-}
-
-/* Alert styles */
+/* --- Alerts --- */
 .alert {
   position: fixed;
   top: 20px;
   right: 20px;
-  padding: 15px;
-  border-radius: 8px;
-  color: white;
-  font-weight: bold;
-  z-index: 1000;
-  animation: slideIn 0.5s ease;
-}
-
-.alert.buy {
-  background-color: #4caf50;
-}
-
-.alert.sell {
-  background-color: #f44336;
-}
-
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-.progress-bar-container {
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 20px;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 20px;
-  background-color: #f0f0f0;
+  padding: 12px 16px;
   border-radius: 10px;
-  overflow: hidden;
+  color: #fff;
+  font-weight:700;
+  z-index: 9999;
+  box-shadow: 0 8px 28px rgba(8,15,30,0.12);
 }
 
-.progress-bar-fill {
-  height: 100%;
-  background-color: #4caf50;
-  animation: loading 1.5s infinite;
-}
+.alert.buy { background: linear-gradient(90deg,var(--success), #06c2a1); }
+.alert.sell { background: linear-gradient(90deg,var(--danger), #ff6b6b); }
 
-@keyframes loading {
-  0% { width: 0%; }
-  50% { width: 70%; }
-  100% { width: 100%; }
-}
-
-.progress-text {
-  text-align: center;
-  margin-top: 5px;
-  font-size: 14px;
-  color: #666;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 4px;
-  background-color: #f0f0f0;
-  margin-bottom: 15px;
-  overflow: hidden;
-}
-
-.progress-bar-inner {
-  height: 100%;
-  width: 0%;
-  background-color: #4caf50;
-  animation: progress 1.5s ease-in-out infinite;
-}
-
-@keyframes progress {
-  0% {
-    width: 0%;
-    margin-left: 0;
-  }
-  50% {
-    width: 70%;
-  }
-  100% {
-    width: 0%;
-    margin-left: 100%;
-  }
-}
-
-/* Volume bars with colors */
-.volume-bars {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.volume-bar {
-  height: 10px;
-  border-radius: 2px;
-  transition: all 0.3s ease;
-}
-
-.volume-bar.active {
-  opacity: 1;
-}
-
-.volume-ratio {
-  margin-left: 5px;
-  font-size: 12px;
-  font-weight: bold;
-}
-
-/* spinner container (centers the spinner & label) */
+/* --- Loading / spinner / progress --- */
 .spinner-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  justify-content:center;
   padding: 18px 0;
 }
 
-/* simple circular spinner using border trick */
 .spinner {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 5px solid rgba(0,0,0,0.12);
-  border-top-color: #1976d2; /* accent color (change if you want) */
-  animation: spinner-rotate 0.9s linear infinite;
-  box-sizing: border-box;
-  margin-bottom: 8px;
+  width:36px;
+  height:36px;
+  border-radius:50%;
+  border:4px solid rgba(2,6,23,0.06);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
 }
 
-/* small loading text */
-.loading-text {
-  font-size: 13px;
-  color: #333;
-  opacity: 0.9;
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.progress-bar {
+  width:100%;
+  height:6px;
+  background:#eef5ff;
+  border-radius: 999px;
+  overflow:hidden;
 }
 
-/* animation */
-@keyframes spinner-rotate {
-  to { transform: rotate(360deg); }
+.progress-bar-inner {
+  height:100%;
+  width:0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  animation: progress 1.6s ease-in-out infinite;
 }
 
-/* optional: keep table cell from collapsing */
-#coins-table td.loading {
-  padding: 12px;
-  text-align: center;
+@keyframes progress {
+  0% { width: 0%; }
+  50% { width: 72%; }
+  100% { width: 0%; }
+}
+
+@media (max-width: 980px) {
+  .container { padding: 16px; }
+  header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  #coins-table thead th { font-size: 0.85rem; padding: 10px; }
+  #coins-table tbody td { font-size: 0.88rem; padding: 10px; }
+}
+
+@media (max-width: 640px) {
+  .controls { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: 1fr; }
+  .buy-sell-bars { width: 100px; }
+  .volume-ratio { display:none; }
+  .pinned-label, .tracked-label { display:none; }
 }

@@ -108,6 +108,63 @@ useEffect(() => {
     }
   };
 
+const handleCopyAddress = (mint) => {
+  navigator.clipboard.writeText(mint)
+    .then(() => console.log("Copied:", mint))
+    .catch(err => console.error("Copy failed", err));
+};
+
+const handleTogglePin = (mint) => {
+  setTrackedCoins(prev => {
+    const newTracked = { ...prev };
+    if (newTracked[mint]) {
+      newTracked[mint] = {
+        ...newTracked[mint],
+        isPinned: !newTracked[mint].isPinned
+      };
+    } else {
+      return prev;
+    }
+    trackedCoinsRef.current = newTracked;
+    try {
+      const processed = processData(
+        Object.values(newTracked),
+        config.momentumThreshold,
+        config.velocityThreshold
+      );
+      const sorted = sortCoins(processed, sortField, sortDirection);
+      setCoinsData(sorted);
+      updateStats(sorted);
+    } catch (err) {
+      console.error("Failed to refresh coinsData after pin toggle", err);
+    }
+
+    return newTracked;
+  });
+};
+
+
+const handleTrackToken = (mint) => {
+  setTrackedCoins(prev => {
+    const newTracked = { ...prev };
+    if (!newTracked[mint]) {
+      newTracked[mint] = {
+        mint,
+        name: "Tracked Token",
+        symbol: "",
+        isTracked: true,
+        isPinned: true,
+        addedAt: Date.now(),
+        history: []
+      };
+    } else {
+      newTracked[mint].isTracked = true;
+      newTracked[mint].isPinned = true;
+    }
+    return newTracked;
+  });
+};
+
   const AlertContainer = ({ alerts }) => (
     <div className="alert-container">
       {alerts.map(alert => (
@@ -167,18 +224,26 @@ useEffect(() => {
 
     setTrackedCoins(prev => {
       let newTracked = { ...prev };
+      const prevToken = newTracked[msg.mint] || {};
 
       if (Object.keys(newTracked).length >= config.maxCoinsToTrack) {
-        const oldestMint = Object.entries(newTracked)
-          .sort((a, b) => (a[1].addedAt || 0) - (b[1].addedAt || 0))[0][0];
-        delete newTracked[oldestMint];
+        const removable = Object.entries(newTracked)
+          .filter(([_, data]) => !data.isPinned)
+          .sort((a, b) => (a[1].addedAt || 0) - (b[1].addedAt || 0));
+
+        if (removable.length > 0) {
+          const oldestMint = removable[0][0];
+          delete newTracked[oldestMint];
+        }
       }
 
       newTracked[msg.mint] = {
         ...tokenData,
-        addedAt: Date.now(),
+        isPinned: prevToken.isPinned || false,
+        isTracked: prevToken.isTracked || false,
+        addedAt: prevToken.addedAt || Date.now(),
         lastUpdated: Date.now(),
-        history: [],
+        history: prevToken.history || [],
       };
 
       return newTracked;
@@ -277,42 +342,50 @@ useEffect(() => {
         const now = Date.now();
 
         setTrackedCoins(prev => {
-  let newTracked = { ...prev };
-  const prevMint =
-    newTracked[mint] ||
-    trackedCoinsRef.current[mint] ||
-    knownTracked ||
-    {};
+          let newTracked = { ...prev };
+          const prevMint =
+            newTracked[mint] ||
+            trackedCoinsRef.current[mint] ||
+            knownTracked ||
+            {};
 
-  const history = prevMint.history || [];
-  history.push({ ts: now, amount, isBuy, isSell });
+          const history = prevMint.history || [];
+          history.push({ ts: now, amount, isBuy, isSell });
 
-        if (newTracked[mint]) {
-          newTracked[mint] = {
-            ...newTracked[mint],
-            history,
-            lastUpdated: Date.now(),
-          };
-        } else {
-          if (Object.keys(newTracked).length >= config.maxCoinsToTrack) {
-            const oldestMint = Object.entries(newTracked)
-              .sort((a, b) => (a[1].addedAt || 0) - (b[1].addedAt || 0))[0][0];
-            delete newTracked[oldestMint];
+          if (newTracked[mint]) {
+            newTracked[mint] = {
+              ...newTracked[mint],
+              history,
+              lastUpdated: Date.now(),
+            };
+          } else {
+            if (Object.keys(newTracked).length >= config.maxCoinsToTrack) {
+              const removable = Object.entries(newTracked)
+                .filter(([_, data]) => !data.isPinned)
+                .sort((a, b) => (a[1].addedAt || 0) - (b[1].addedAt || 0));
+
+              if (removable.length > 0) {
+                const oldestMint = removable[0][0];
+                delete newTracked[oldestMint];
+              } else {
+                return prev;
+              }
+            }
+
+            newTracked[mint] = {
+              ...prevMint,
+              history,
+              name: prevMint.name || knownTracked.name || "Unknown",
+              symbol: prevMint.symbol || knownTracked.symbol || "",
+              isPinned: prevMint.isPinned || false,
+              addedAt: Date.now(),
+              lastUpdated: Date.now(),
+            };
           }
 
-          newTracked[mint] = {
-            ...prevMint,
-            history,
-            name: prevMint.name || knownTracked.name || "Unknown",
-            symbol: prevMint.symbol || knownTracked.symbol || "",
-            addedAt: Date.now(),
-            lastUpdated: Date.now(),
-          };
-        }
-
-        trackedCoinsRef.current = newTracked;
-        return newTracked;
-      });
+          trackedCoinsRef.current = newTracked;
+          return newTracked;
+        });
 
         console.debug("Helius WS event:", {
           mint,
@@ -443,25 +516,24 @@ useEffect(() => {
     }
   };
 
-  const sortCoins = (coins, field, direction) => {
+  const sortCoins = (coins, field, direction = "asc") => {
     return [...coins].sort((a, b) => {
-      let valueA = a[field];
-      let valueB = b[field];
-      if (field === 'buySellRatio') {
-        const [buysA, sellsA] = (a.buySellRatio || '0:1').split(':').map(Number);
-        const [buysB, sellsB] = (b.buySellRatio || '0:1').split(':').map(Number);
-        const ratioA = sellsA > 0 ? buysA / sellsA : buysA;
-        const ratioB = sellsB > 0 ? buysB / sellsB : buysB;
-        return direction === 'asc' ? ratioA - ratioB : ratioB - ratioA;
-      }
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      let valA = a[field];
+      let valB = b[field];
+      if (valA == null) valA = 0;
+      if (valB == null) valB = 0;
 
-      if (typeof valueA === 'string') {
-        return direction === 'asc' ? valueA.localeCompare(valueB) : valueB.localeCompare(valueA);
-      }
+      if (typeof valA === "string") valA = valA.toLowerCase();
+      if (typeof valB === "string") valB = valB.toLowerCase();
 
-      return direction === 'asc' ? (valueA || 0) - (valueB || 0) : (valueB || 0) - (valueA || 0);
+      if (valA < valB) return direction === "asc" ? -1 : 1;
+      if (valA > valB) return direction === "asc" ? 1 : -1;
+      return 0;
     });
   };
+
 
   const updateStats = (coins) => {
     const filteredCoins = coins.filter(coin =>
@@ -510,6 +582,7 @@ useEffect(() => {
         refreshInterval={config.refreshInterval / 1000}
         maxCoinsToTrack={config.maxCoinsToTrack}
         onApplySettings={handleApplySettings}
+        onTrackToken={handleTrackToken}
       />
 
       {errorMessage && <div id="error-message" className="error">{errorMessage}</div>}
@@ -526,6 +599,8 @@ useEffect(() => {
         sortField={sortField}
         sortDirection={sortDirection}
         onSort={handleSort}
+        onCopyAddress={handleCopyAddress}
+        onTogglePin={handleTogglePin}
       />
 
       <AlertContainer alerts={alerts} />
